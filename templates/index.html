@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>CivicSnap Upload Test</title>
+</head>
+<body>
+    <h2>Report an Issue</h2>
+    <!-- The form must have enctype="multipart/form-data" to send files -->
+    <form action="/report" method="post" enctype="multipart/form-data">
+        <label>Select Image (Must have GPS):</label><br>
+        <input type="file" name="image" required><br><br>
+        
+        <label>Description:</label><br>
+        <input type="text" name="description" placeholder="E.g., Pothole"><br><br>
+        
+        <input type="submit" value="Upload Complaint">
+    </form>
+</body>
+</html>

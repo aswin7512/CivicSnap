@@ -1,5 +1,6 @@
 import os
 from flask import Flask, request, jsonify, render_template
+from dotenv import load_dotenv
 import psycopg2
 from PIL import Image
 from PIL.ExifTags import TAGS, GPSTAGS
@@ -7,10 +8,12 @@ from PIL.ExifTags import TAGS, GPSTAGS
 app = Flask(__name__)
 
 # CONFIGURATION
-DB_HOST = "localhost"
-DB_NAME = "civicsnap_db"
-DB_USER = "postgres"
-DB_PASS = "olakkente mood@9011"
+load_dotenv()
+DB_USER = os.getenv("user")
+DB_PASS = os.getenv("password")
+DB_HOST = os.getenv("host")
+DB_PORT = os.getenv("port")
+DB_NAME = os.getenv("dbname")
 UPLOAD_FOLDER = 'uploads'
 
 if not os.path.exists(UPLOAD_FOLDER):
@@ -20,7 +23,12 @@ if not os.path.exists(UPLOAD_FOLDER):
 # HELPER 1: CONNECT TO DATABASE
 # ---------------------------------------------------------
 def get_db_connection():
-    conn = psycopg2.connect(host=DB_HOST, database=DB_NAME, user=DB_USER, password=DB_PASS)
+    conn = psycopg2.connect(host=DB_HOST,
+        database=DB_NAME,
+        user=DB_USER,
+        password=DB_PASS,
+        port=DB_PORT
+    )
     return conn
 
 # ---------------------------------------------------------

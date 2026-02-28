@@ -11,7 +11,8 @@ CREATE TABLE wards (
 -- 3. Create Complaints Table
 CREATE TABLE complaints (
     id SERIAL PRIMARY KEY,
-    image_path TEXT,
+    image_url TEXT,
+    category VARCHAR(50),
     description TEXT,
     status VARCHAR(20) DEFAULT 'Pending',
     geom GEOMETRY(Point, 4326),
@@ -23,3 +24,9 @@ INSERT INTO wards (name, geom) VALUES (
  'Test Ward 01', 
  ST_GeomFromText('POLYGON((76.0 9.0, 77.0 9.0, 77.0 10.0, 76.0 10.0, 76.0 9.0))', 4326)
 );
+
+-- 5. Allow anyone to view/download images from the 'complaints' bucket
+CREATE POLICY "Public Read Access" 
+ON storage.objects FOR SELECT 
+TO public 
+USING (bucket_id = 'complaints');

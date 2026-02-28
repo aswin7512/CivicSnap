@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Report Issue</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<h2>Report Civic Issue</h2>
+
+<input type="file" id="image"><br><br>
+
+<button onclick="getLocation()">Get Location</button>
+<p id="locationText"></p>
+
+<br>
+<button onclick="submitComplaint()">Submit Complaint</button>
+
+<br><br>
+<button onclick="goHome()">Back to Home</button>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="script.js"></script>
+
+<script>
+function goHome() {
+  window.location.href = "home.html"
+}
+</script>
+
+</body>
+</html>

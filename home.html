@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>CivicSnap Home</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<h2>Welcome to CivicSnap</h2>
+
+<button onclick="goReport()">Report Issue</button>
+<button onclick="goComplaints()">My Complaints</button>
+<button onclick="logout()">Logout</button>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="script.js"></script>
+
+<script>
+function goReport() {
+  window.location.href = "report.html"
+}
+
+function goComplaints() {
+  window.location.href = "complaints.html"
+}
+</script>
+
+</body>
+</html>

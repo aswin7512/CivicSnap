@@ -45,6 +45,7 @@ def report_issue():
     file = request.files['image']
     category = request.form.get('category', 'No category')
     desc = request.form.get('description', 'No description')
+    phone = request.form.get('phone')
     
     # Save temporarily for forensics
     temp_file_path = os.path.join(UPLOAD_FOLDER, file.filename)
@@ -128,11 +129,11 @@ def report_issue():
 
     # --- STEP 5: SAVE TO DATABASE ---
     insert_query = """
-        INSERT INTO complaints (image_url, description, geom, ward_id, category)
-        VALUES (%s, %s, ST_SetSRID(ST_MakePoint(%s, %s), 4326), %s, %s)
+        INSERT INTO complaints (image_url, description, geom, ward_id, category, phone_number)
+        VALUES (%s, %s, ST_SetSRID(ST_MakePoint(%s, %s), 4326), %s, %s, %s)
         RETURNING id;
     """
-    cur.execute(insert_query, (public_url, desc, lon, lat, ward_id, category))
+    cur.execute(insert_query, (public_url, desc, lon, lat, ward_id, category, phone))
     new_id = cur.fetchone()[0]
     conn.commit()
     

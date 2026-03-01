@@ -48,11 +48,10 @@ export default function ReportPage() {
     formData.append('image', file);
     formData.append('category', category);
     formData.append('description', description);
-    // Send phone number as user ID if available, otherwise fallback to auth ID
-    formData.append('user', user?.phone || user?.id || 'anonymous');
+    formData.append('phone', user?.phone || 'anonymous');
 
     try {
-      const apiUrl = import.meta.env.VITE_API_URL || 'https://24ee-103-170-55-105.ngrok-free.app/api/v1';
+      const apiUrl = import.meta.env.VITE_API_URL;
       await axios.post(`${apiUrl}`, formData, {
         headers: {
           'Content-Type': 'multipart/form-data',
@@ -63,7 +62,7 @@ export default function ReportPage() {
       setTimeout(() => navigate('/dashboard'), 2000);
     } catch (err: any) {
       console.error(err);
-      const apiUrl = import.meta.env.VITE_API_URL || 'https://24ee-103-170-55-105.ngrok-free.app/api/v1';
+      const apiUrl = import.meta.env.VITE_API_URL;
       
       let errorMessage = "Failed to submit report.";
       

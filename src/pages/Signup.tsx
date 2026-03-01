@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase';
 import { Phone, Lock, Loader2, UserPlus, ArrowRight, ShieldCheck } from 'lucide-react';
 
 export default function SignupPage() {
+  const [name, setName] = useState('');
   const [phone, setPhone] = useState('+91');
   const [password, setPassword] = useState('');
   const [otp, setOtp] = useState('');
@@ -35,6 +36,11 @@ export default function SignupPage() {
       const { error } = await supabase.auth.signUp({
         phone: phone,
         password: password,
+        options: {
+          data: {
+            display_name: name,
+          },
+        },
       });
 
       if (error) throw error;
@@ -63,6 +69,8 @@ export default function SignupPage() {
       });
 
       if (error) throw error;
+      // ensure display name stored (signup already attempted to set it, but update just in case)
+      await supabase.auth.updateUser({ data: { display_name: name } });
       navigate('/dashboard');
     } catch (err: any) {
       setError(err.message || 'Invalid OTP. Please try again.');
@@ -100,6 +108,21 @@ export default function SignupPage() {
 
         {step === 'credentials' ? (
           <form onSubmit={handleSignup} className="space-y-4">
+            <div>
+              <label htmlFor="name" className="block text-sm font-medium text-slate-700 mb-1">
+                Full Name
+              </label>
+              <input
+                id="name"
+                type="text"
+                placeholder="Jane Doe"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition-all"
+                required
+              />
+            </div>
+
             <div>
               <label htmlFor="phone" className="block text-sm font-medium text-slate-700 mb-1">
                 Phone Number

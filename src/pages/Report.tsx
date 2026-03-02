@@ -52,7 +52,7 @@ export default function ReportPage() {
 
     try {
       const apiUrl = import.meta.env.VITE_API_URL;
-      await axios.post(`${apiUrl}`, formData, {
+      await axios.post(`${apiUrl}/report`, formData, {
         headers: {
           'Content-Type': 'multipart/form-data',
         },
@@ -69,7 +69,7 @@ export default function ReportPage() {
       if (err.message?.includes('404')) {
         errorMessage = `API Endpoint not found (404). Trying to reach: ${apiUrl}/report`;
       } else if (err.code === 'ERR_NETWORK') {
-        errorMessage = `Cannot connect to server at ${apiUrl}. Is the backend running?`;
+        errorMessage = `Cannot connect to server at ${apiUrl}/report. Is the backend running?`;
       } else {
         errorMessage = err.response?.data?.message || err.message || errorMessage;
       }

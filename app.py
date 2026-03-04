@@ -4,6 +4,7 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 from supabase import create_client, Client
 from helper import get_db_connection, extract_gps, compress_image
+import datetime
 
 app = Flask(__name__)
 
@@ -149,6 +150,60 @@ def report_issue():
         "compression": "Applied" if compression_success else "Failed/Not Applied",
         "image_url": public_url
     }), 201
+
+# 3. Issue Request End point
+@app.route('/api/v1/complaints/user/<string:phone_number>', methods=['GET'])
+def get_user_complaints(phone_number):
+    conn = get_db_connection()
+    cur = conn.cursor()
+
+    try:
+        query = """
+            SELECT id, description, status, image_url, created_at, 
+                   ST_Y(geom) as lat, ST_X(geom) as lon
+            FROM complaints 
+            WHERE phone_number = %s
+            ORDER BY created_at DESC;
+        """
+        cur.execute(query, (phone_number,))
+        records = cur.fetchall()
+
+        complaints = []
+        for row in records:
+            # Handle the datetime to ISO string conversion safely
+            db_date = row[4]
+            if isinstance(db_date, datetime.datetime):
+                # Convert to standard ISO format with 'Z' indicating UTC
+                iso_date = db_date.isoformat()
+                if not iso_date.endswith('Z') and not '+' in iso_date:
+                    iso_date += 'Z'
+            else:
+                iso_date = None
+
+            # Handle status casing (defaulting to 'pending' if null)
+            raw_status = row[2]
+            status_val = raw_status.lower() if raw_status else 'pending'
+
+            # Build the exact dictionary the frontend expects
+            complaints.append({
+                "id": str(row[0]),           # Cast integer ID to string
+                "description": row[1],
+                "status": status_val,        # Lowercase status
+                "image_url": row[3],
+                "created_at": iso_date,      # ISO 8601 formatted date string
+                "latitude": row[5],          # Float from PostGIS ST_Y
+                "longitude": row[6]          # Float from PostGIS ST_X
+            })
+        print(complaints)
+
+        # Return the raw array directly if your frontend maps over the root response
+        return jsonify(complaints), 200
+
+    except Exception as e:
+        return jsonify({"error": f"Database error: {str(e)}"}), 500
+    finally:
+        cur.close()
+        conn.close()
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5000)

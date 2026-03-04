@@ -1,10 +1,16 @@
 import os
 import uuid
-from flask import Flask, request, jsonify, render_template
+from flask import Flask, request, jsonify
+from flask_cors import CORS
 from supabase import create_client, Client
 from helper import get_db_connection, extract_gps, compress_image
+import datetime
 
 app = Flask(__name__)
+
+# --- ENABLE CORS ---
+# This allows external domains (like your frontend) to securely talk to this API
+CORS(app)
 
 # Supabase Configuration
 SUPABASE_URL = os.getenv("SUPABASE_URL")
@@ -18,9 +24,21 @@ if not os.path.exists(UPLOAD_FOLDER):
     os.makedirs(UPLOAD_FOLDER)
 
 # ---------------------------------------------------------
-# API: UPLOAD COMPLAINT
+# API ENDPOINTS
 # ---------------------------------------------------------
-@app.route('/report', methods=['POST', 'GET'])
+
+# 1. Health Check Endpoint
+# Replaces your index.html. Used to verify the API is online.
+@app.route('/', methods=['GET'])
+def health_check():
+    return jsonify({
+        "status": "Online",
+        "version": "1.0",
+        "message": "Complaint API Backend is running."
+    }), 200
+
+# 2. Main Upload Endpoint (Versioned and restricted to POST)
+@app.route('/api/v1/report', methods=['POST'])
 def report_issue():
     if 'image' not in request.files:
         return jsonify({"error": "No image uploaded"}), 400
@@ -28,6 +46,7 @@ def report_issue():
     file = request.files['image']
     category = request.form.get('category', 'No category')
     desc = request.form.get('description', 'No description')
+    phone = request.form.get('phone')
     
     # Save temporarily for forensics
     temp_file_path = os.path.join(UPLOAD_FOLDER, file.filename)
@@ -37,7 +56,7 @@ def report_issue():
     gps_data = extract_gps(temp_file_path)
     if not gps_data:
         os.remove(temp_file_path) # Delete fake image
-        return jsonify({"status": "Rejected", "reason": "Image lacks GPS metadata (Forensic Check Failed)"}), 400
+        return jsonify({"status": "Rejected", "reason": "Image lacks GPS metadata"}), 400
     
     lat, lon = gps_data
     print(f"Forensics Passed. GPS: {lat}, {lon}")
@@ -53,6 +72,7 @@ def report_issue():
     """
     cur.execute(check_query, (lon, lat))
     duplicate, data = False, cur.fetchall()
+    
     for issue in data:
         if issue[1] == category:
             duplicate = True
@@ -62,7 +82,8 @@ def report_issue():
         cur.close()
         conn.close()
         os.remove(temp_file_path) # Clean up staging file
-        return jsonify({"status": "Duplicate", "message": "This issue has already been reported nearby."})
+        # 409 Conflict is the standard status code for duplicate entries
+        return jsonify({"status": "Duplicate", "message": "This issue has already been reported nearby."}), 409
 
     # --- STEP 3: SPATIAL ROUTING (Routing Gap) ---
     routing_query = """
@@ -88,8 +109,6 @@ def report_issue():
     # 3. Upload to Supabase Storage
     try:
         with open(temp_file_path, 'rb') as f:
-            # We must specify the correct mimetype (e.g., image/jpeg)
-            # The original file.mimetype should still be valid even after compression
             supabase.storage.from_(SUPABASE_BUCKET).upload(
                 path=unique_filename,
                 file=f,
@@ -103,24 +122,26 @@ def report_issue():
         cur.close()
         conn.close()
         os.remove(temp_file_path)
+        # 500 Internal Server Error for storage failure
         return jsonify({"error": f"Failed to upload to cloud storage: {str(e)}"}), 500
 
-    # Clean up the local temporary file now that it's safely in Supabase
+    # Clean up the local temporary file
     os.remove(temp_file_path)
 
     # --- STEP 5: SAVE TO DATABASE ---
     insert_query = """
-        INSERT INTO complaints (image_url, description, geom, ward_id, category)
-        VALUES (%s, %s, ST_SetSRID(ST_MakePoint(%s, %s), 4326), %s, %s)
+        INSERT INTO complaints (image_url, description, geom, ward_id, category, phone_number)
+        VALUES (%s, %s, ST_SetSRID(ST_MakePoint(%s, %s), 4326), %s, %s, %s)
         RETURNING id;
     """
-    cur.execute(insert_query, (public_url, desc, lon, lat, ward_id, category))
+    cur.execute(insert_query, (public_url, desc, lon, lat, ward_id, category, phone))
     new_id = cur.fetchone()[0]
     conn.commit()
     
     cur.close()
     conn.close()
 
+    # 201 Created is the standard status code for successful record creation
     return jsonify({
         "status": "Success", 
         "complaint_id": new_id,
@@ -128,11 +149,61 @@ def report_issue():
         "forensics": "Verified",
         "compression": "Applied" if compression_success else "Failed/Not Applied",
         "image_url": public_url
-    })
+    }), 201
 
-@app.route('/')
-def home():
-    return render_template("index.html")
+# 3. Issue Request End point
+@app.route('/api/v1/complaints/user/<string:phone_number>', methods=['GET'])
+def get_user_complaints(phone_number):
+    conn = get_db_connection()
+    cur = conn.cursor()
+
+    try:
+        query = """
+            SELECT id, description, status, image_url, created_at, 
+                   ST_Y(geom) as lat, ST_X(geom) as lon
+            FROM complaints 
+            WHERE phone_number = %s
+            ORDER BY created_at DESC;
+        """
+        cur.execute(query, (phone_number,))
+        records = cur.fetchall()
+
+        complaints = []
+        for row in records:
+            # Handle the datetime to ISO string conversion safely
+            db_date = row[4]
+            if isinstance(db_date, datetime.datetime):
+                # Convert to standard ISO format with 'Z' indicating UTC
+                iso_date = db_date.isoformat()
+                if not iso_date.endswith('Z') and not '+' in iso_date:
+                    iso_date += 'Z'
+            else:
+                iso_date = None
+
+            # Handle status casing (defaulting to 'pending' if null)
+            raw_status = row[2]
+            status_val = raw_status.lower() if raw_status else 'pending'
+
+            # Build the exact dictionary the frontend expects
+            complaints.append({
+                "id": str(row[0]),           # Cast integer ID to string
+                "description": row[1],
+                "status": status_val,        # Lowercase status
+                "image_url": row[3],
+                "created_at": iso_date,      # ISO 8601 formatted date string
+                "latitude": row[5],          # Float from PostGIS ST_Y
+                "longitude": row[6]          # Float from PostGIS ST_X
+            })
+        print(complaints)
+
+        # Return the raw array directly if your frontend maps over the root response
+        return jsonify(complaints), 200
+
+    except Exception as e:
+        return jsonify({"error": f"Database error: {str(e)}"}), 500
+    finally:
+        cur.close()
+        conn.close()
 
 if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0')
+    app.run(debug=True, host='0.0.0.0', port=5000)

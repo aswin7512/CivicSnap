@@ -16,7 +16,8 @@ CREATE TABLE complaints (
     description TEXT,
     status VARCHAR(20) DEFAULT 'Pending',
     geom GEOMETRY(Point, 4326),
-    ward_id INTEGER REFERENCES wards(id)
+    ward_id INTEGER REFERENCES wards(id),
+    phone VARCHAR(200)
 );
 
 -- 4. Insert dummy ward

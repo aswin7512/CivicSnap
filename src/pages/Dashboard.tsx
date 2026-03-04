@@ -22,47 +22,17 @@ export default function DashboardPage() {
   useEffect(() => {
     const fetchReports = async () => {
       try {
-        const apiUrl = import.meta.env.VITE_API_URL || 'https://localhost:5000/api/v1';
+        const apiUrl = import.meta.env.VITE_API_URL;
         // Mock data for demonstration if API fails or user is not logged in
-        if (!user) {
-           // Redirect or show empty state handled by UI
+        if (!user || !user.phone) {
+           setLoading(false);
+           return;
         }
         
         // Attempt to fetch real data
-        // const response = await axios.get(`${apiUrl}/report?user_id=${user?.phone || user?.id}`);
-        // setReports(response.data);
-
-        // For demo purposes, let's simulate a fetch with some mock data if the API is unreachable
-        // In a real app, we would handle the error properly.
-        setTimeout(() => {
-          setReports([
-            {
-              id: '1',
-              description: 'Large pothole on 5th Avenue near the library.',
-              status: 'pending',
-              image_url: 'https://images.unsplash.com/photo-1515162816999-a0c47dc192f7?auto=format&fit=crop&q=80&w=400',
-              created_at: new Date().toISOString(),
-              latitude: 40.7128,
-              longitude: -74.0060
-            },
-            {
-              id: '2',
-              description: 'Streetlight flickering constantly.',
-              status: 'in_progress',
-              image_url: 'https://images.unsplash.com/photo-1550622736-e029824c304f?auto=format&fit=crop&q=80&w=400',
-              created_at: new Date(Date.now() - 86400000).toISOString(),
-            },
-            {
-              id: '3',
-              description: 'Graffiti on park bench.',
-              status: 'resolved',
-              image_url: 'https://images.unsplash.com/photo-1584467541268-b040f83be3dd?auto=format&fit=crop&q=80&w=400',
-              created_at: new Date(Date.now() - 172800000).toISOString(),
-            }
-          ]);
-          setLoading(false);
-        }, 1000);
-
+        const response = await axios.get(`${apiUrl}/complaints/user/${encodeURIComponent(user?.phone)}`);
+        setReports(response.data);
+        setLoading(false);
       } catch (err) {
         console.error(err);
         setError("Failed to load reports.");
@@ -140,7 +110,7 @@ export default function DashboardPage() {
                   </p>
                   {report.latitude && (
                     <a 
-                      href={`https://maps.google.com/?q=${report.latitude},${report.longitude}`} 
+                      href={`https://www.google.com/maps/search/?api=1&query=${report.latitude},${report.longitude}`} 
                       target="_blank" 
                       rel="noreferrer"
                       className="text-xs text-blue-600 hover:underline flex items-center gap-1"

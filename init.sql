@@ -27,6 +27,10 @@ INSERT INTO wards (name, geom) VALUES (
  ST_GeomFromText('POLYGON((76.0 9.0, 77.0 9.0, 77.0 10.0, 76.0 10.0, 76.0 9.0))', 4326)
 );
 
+-- 5. Create a supabase bucket to store the images
+insert into storage.buckets (id, name, public)
+values ('complaints', 'complaints', true);
+
 -- 5. Allow anyone to view/download images from the 'complaints' bucket
 CREATE POLICY "Public Read Access" 
 ON storage.objects FOR SELECT 

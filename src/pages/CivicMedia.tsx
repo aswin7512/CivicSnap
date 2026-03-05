@@ -39,7 +39,7 @@ export default function CivicMedia() {
       }
 
       try {
-        const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000/api/v1';
+        const apiUrl = import.meta.env.VITE_API_URL;
         const response = await axios.get(`${apiUrl}/complaints/ward?lat=${lat}&lon=${lon}`);
         
         setFeed(response.data.data);

@@ -27,7 +27,7 @@ export default function AdminIssues() {
   // State for the popup modal
   const [selectedIssue, setSelectedIssue] = useState<AdminIssue | null>(null);
 
-  const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000/api/v1';
+  const apiUrl = import.meta.env.VITE_API_URL;
 
   useEffect(() => {
     fetchIssues();

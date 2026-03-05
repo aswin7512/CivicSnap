@@ -24,7 +24,7 @@ export default function SignupPage() {
   const [selectedWard, setSelectedWard] = useState('');
   const [wards, setWards] = useState<Ward[]>([]);
 
-  const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000/api/v1';
+  const apiUrl = import.meta.env.VITE_API_URL;
 
   // Fetch wards only when the user selects the "admin" role
   useEffect(() => {

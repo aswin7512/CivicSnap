@@ -1,10 +1,39 @@
-import React from 'react';
-import { Link } from 'react-router-dom';
-import { Camera, Shield, CheckCircle, ArrowRight } from 'lucide-react';
+import React, { useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
+import { Camera, Shield, CheckCircle, ArrowRight, MapPin, Navigation, Loader2 } from 'lucide-react';
 
 export default function HomePage() {
+  const navigate = useNavigate();
+  const [isLocating, setIsLocating] = useState(false);
+  const [locationError, setLocationError] = useState('');
+
+  const handleOpenCivicMedia = () => {
+    setIsLocating(true);
+    setLocationError('');
+
+    if (!navigator.geolocation) {
+      setLocationError('Geolocation is not supported by your browser.');
+      setIsLocating(false);
+      return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        setIsLocating(false);
+        // Navigate to the CivicMedia page with coordinates in the URL
+        navigate(`/civic-media?lat=${position.coords.latitude}&lon=${position.coords.longitude}`);
+      },
+      (error) => {
+        console.error('Error getting location:', error);
+        setLocationError('Unable to retrieve your location. Please ensure location services are enabled.');
+        setIsLocating(false);
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+    );
+  };
+
   return (
-    <div className="space-y-16">
+    <div className="space-y-16 pb-12">
       {/* Hero Section */}
       <section className="text-center py-12 md:py-20 space-y-6">
         <div className="inline-flex items-center gap-2 px-4 py-2 bg-blue-50 text-blue-700 rounded-full text-sm font-medium mb-4">
@@ -59,6 +88,40 @@ export default function HomePage() {
           title="Track Progress"
           description="Get real-time updates on the status of your reports as city officials address them."
         />
+      </section>
+
+      {/* --- NEW: CivicMedia Prompt Section --- */}
+      <section className="bg-gradient-to-br from-blue-600 to-indigo-700 rounded-3xl p-8 md:p-12 text-center text-white shadow-lg relative overflow-hidden">
+        <div className="absolute top-0 right-0 w-64 h-64 bg-white opacity-5 rounded-full blur-3xl -mr-20 -mt-20 pointer-events-none"></div>
+        <div className="relative z-10">
+          <div className="w-16 h-16 bg-white/20 rounded-full flex items-center justify-center mx-auto mb-6 backdrop-blur-sm border border-white/30">
+            <MapPin className="w-8 h-8 text-white" />
+          </div>
+          <h2 className="text-3xl font-bold mb-4">What's happening in your area?</h2>
+          <p className="text-blue-100 mb-8 max-w-lg mx-auto text-lg">
+            View the CivicMedia feed to see what issues your neighbors are reporting around you right now.
+          </p>
+          
+          <button 
+            onClick={handleOpenCivicMedia}
+            disabled={isLocating}
+            className="bg-white text-blue-700 hover:bg-blue-50 transition-colors font-bold py-4 px-8 rounded-full inline-flex items-center gap-3 disabled:opacity-70 shadow-xl"
+          >
+            {isLocating ? (
+              <><Loader2 className="w-5 h-5 animate-spin" /> Locating...</>
+            ) : (
+              <><Navigation className="w-5 h-5" /> Browse Local Feed</>
+            )}
+          </button>
+
+          {locationError && (
+            <div className="mt-4">
+              <span className="text-red-100 text-sm bg-red-900/40 py-2 px-4 rounded-lg inline-block border border-red-500/30">
+                {locationError}
+              </span>
+            </div>
+          )}
+        </div>
       </section>
       
       {/* Stats / Trust Section */}

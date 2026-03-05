@@ -7,6 +7,7 @@ import LoginPage from './pages/Login';
 import SignupPage from './pages/Signup';
 import ReportPage from './pages/Report';
 import DashboardPage from './pages/Dashboard';
+import CivicMedia from './pages/CivicMedia';
 
 export default function App() {
   return (
@@ -15,8 +16,9 @@ export default function App() {
         <Route index element={<HomePage />} />
         <Route path="login" element={<LoginPage />} />
         <Route path="signup" element={<SignupPage />} />
-        {/* Redirect legacy auth route to login */}
         <Route path="auth" element={<Navigate to="/login" replace />} />
+        
+        <Route path="civic-media" element={<CivicMedia />} />
         
         <Route 
           path="report" 

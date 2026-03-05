@@ -204,6 +204,96 @@ def get_user_complaints(phone_number):
     finally:
         cur.close()
         conn.close()
+    
+# 4. End point to fetch Issues around a location
+@app.route('/api/v1/complaints/ward', methods=['GET'])
+def get_complaints_by_location():
+    # 1. Grab coordinates from the URL query string
+    lat = request.args.get('lat')
+    lon = request.args.get('lon')
+
+    if not lat or not lon:
+        return jsonify({"error": "Latitude and longitude are required parameters"}), 400
+
+    try:
+        lat = float(lat)
+        lon = float(lon)
+    except ValueError:
+        return jsonify({"error": "Invalid coordinates provided"}), 400
+
+    conn = get_db_connection()
+    cur = conn.cursor()
+
+    try:
+        # --- STEP 1: Find which ward contains this location ---
+        # Note: PostGIS ST_MakePoint requires (Longitude, Latitude) order
+        ward_query = """
+            SELECT id, name FROM wards 
+            WHERE ST_Contains(geom, ST_SetSRID(ST_MakePoint(%s, %s), 4326));
+        """
+        cur.execute(ward_query, (lon, lat))
+        ward = cur.fetchone()
+
+        # If the user is outside your defined city boundaries
+        if not ward:
+            return jsonify({
+                "status": "Not Found",
+                "message": "This location does not fall inside any registered ward.",
+                "data": []
+            }), 404
+
+        ward_id, ward_name = ward[0], ward[1]
+
+        # --- STEP 2: Fetch all complaints for this ward ---
+        complaints_query = """
+            SELECT id, category, description, status, image_url, created_at, 
+                   ST_Y(geom) as lat, ST_X(geom) as lon 
+            FROM complaints 
+            WHERE ward_id = %s
+            ORDER BY created_at DESC;
+        """
+        cur.execute(complaints_query, (ward_id,))
+        records = cur.fetchall()
+
+        complaints = []
+        for row in records:
+            # Handle standard ISO date formatting
+            db_date = row[5]
+            if isinstance(db_date, datetime.datetime):
+                iso_date = db_date.isoformat()
+                if not iso_date.endswith('Z') and not '+' in iso_date:
+                    iso_date += 'Z'
+            else:
+                iso_date = None
+
+            raw_status = row[3]
+            status_val = raw_status.lower() if raw_status else 'pending'
+
+            complaints.append({
+                "id": str(row[0]),
+                "category": row[1],
+                "description": row[2],
+                "status": status_val,
+                "image_url": row[4],
+                "created_at": iso_date,
+                "latitude": row[6],
+                "longitude": row[7]
+            })
+
+        # Return a rich payload including the identified ward context
+        return jsonify({
+            "status": "Success",
+            "ward_id": ward_id,
+            "ward_name": ward_name,
+            "count": len(complaints),
+            "data": complaints
+        }), 200
+
+    except Exception as e:
+        return jsonify({"error": f"Database error: {str(e)}"}), 500
+    finally:
+        cur.close()
+        conn.close()
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5000)

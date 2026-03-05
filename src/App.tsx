@@ -8,6 +8,7 @@ import SignupPage from './pages/Signup';
 import ReportPage from './pages/Report';
 import DashboardPage from './pages/Dashboard';
 import CivicMedia from './pages/CivicMedia';
+import AdminIssues from './pages/AdminIssues';
 
 export default function App() {
   return (
@@ -17,7 +18,7 @@ export default function App() {
         <Route path="login" element={<LoginPage />} />
         <Route path="signup" element={<SignupPage />} />
         <Route path="auth" element={<Navigate to="/login" replace />} />
-        
+        <Route path="admin/issues" element={<AdminIssues />} />
         <Route path="civic-media" element={<CivicMedia />} />
         
         <Route 

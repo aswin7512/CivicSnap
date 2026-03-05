@@ -1,7 +1,13 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
-import { Phone, Lock, Loader2, UserPlus, ArrowRight, ShieldCheck } from 'lucide-react';
+import { Phone, Lock, Loader2, UserPlus, ArrowRight, ShieldCheck, Shield, MapPin } from 'lucide-react';
+import axios from 'axios';
+
+interface Ward {
+  id: number;
+  name: string;
+}
 
 export default function SignupPage() {
   const [name, setName] = useState('');
@@ -12,6 +18,22 @@ export default function SignupPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const navigate = useNavigate();
+
+  // New State for Role and Ward Management
+  const [role, setRole] = useState<'citizen' | 'admin'>('citizen');
+  const [selectedWard, setSelectedWard] = useState('');
+  const [wards, setWards] = useState<Ward[]>([]);
+
+  const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000/api/v1';
+
+  // Fetch wards only when the user selects the "admin" role
+  useEffect(() => {
+    if (role === 'admin' && wards.length === 0) {
+      axios.get(`${apiUrl}/wards`)
+        .then(res => setWards(res.data.data))
+        .catch(err => console.error("Failed to load wards:", err));
+    }
+  }, [role, wards.length, apiUrl]);
 
   const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     let value = e.target.value;
@@ -32,14 +54,26 @@ export default function SignupPage() {
     setLoading(true);
     setError(null);
 
+    // Validation for Admin Ward Selection
+    if (role === 'admin' && !selectedWard) {
+      setError("Please select a ward to manage.");
+      setLoading(false);
+      return;
+    }
+
     try {
+      // Dynamically build the metadata payload
+      const metaData = {
+        display_name: name,
+        role: role,
+        ...(role === 'admin' && { ward_allocated: parseInt(selectedWard) })
+      };
+
       const { error } = await supabase.auth.signUp({
         phone: phone,
         password: password,
         options: {
-          data: {
-            display_name: name,
-          },
+          data: metaData,
         },
       });
 
@@ -69,9 +103,16 @@ export default function SignupPage() {
       });
 
       if (error) throw error;
-      // ensure display name stored (signup already attempted to set it, but update just in case)
+      
+      // Update display name just in case it wasn't captured
       await supabase.auth.updateUser({ data: { display_name: name } });
-      navigate('/dashboard');
+      
+      // Route based on role
+      if (role === 'admin') {
+        navigate('/admin/issues');
+      } else {
+        navigate('/dashboard');
+      }
     } catch (err: any) {
       setError(err.message || 'Invalid OTP. Please try again.');
     } finally {
@@ -80,7 +121,7 @@ export default function SignupPage() {
   };
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-[80vh] px-4">
+    <div className="flex flex-col items-center justify-center min-h-[80vh] px-4 py-8">
       <div className="w-full max-w-md bg-white rounded-2xl shadow-xl p-8 border border-slate-100">
         <div className="text-center mb-8">
           <div className="bg-blue-50 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -107,7 +148,7 @@ export default function SignupPage() {
         )}
 
         {step === 'credentials' ? (
-          <form onSubmit={handleSignup} className="space-y-4">
+          <form onSubmit={handleSignup} className="space-y-5">
             <div>
               <label htmlFor="name" className="block text-sm font-medium text-slate-700 mb-1">
                 Full Name
@@ -140,9 +181,6 @@ export default function SignupPage() {
                   maxLength={13}
                 />
               </div>
-              <p className="text-xs text-slate-400 mt-2">
-                Indian mobile numbers only (+91).
-              </p>
             </div>
 
             <div>
@@ -164,10 +202,52 @@ export default function SignupPage() {
               </div>
             </div>
 
+            {/* --- NEW: ROLE SELECTION DROPDOWN --- */}
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1 flex items-center gap-1">
+                <Shield size={16} className="text-slate-400" />
+                Account Type
+              </label>
+              <select
+                value={role}
+                onChange={(e) => {
+                  setRole(e.target.value as 'citizen' | 'admin');
+                  if (e.target.value === 'citizen') setSelectedWard('');
+                }}
+                className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none bg-white transition-all"
+              >
+                <option value="citizen">Citizen</option>
+                <option value="admin">City Admin</option>
+              </select>
+            </div>
+
+            {/* --- NEW: WARD SELECTION DROPDOWN (Conditional) --- */}
+            {role === 'admin' && (
+              <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-2 animate-in fade-in slide-in-from-top-2">
+                <label className="block text-sm font-medium text-slate-700 flex items-center gap-1">
+                  <MapPin size={16} className="text-slate-400" />
+                  Assigned Ward
+                </label>
+                <select
+                  required={role === 'admin'}
+                  value={selectedWard}
+                  onChange={(e) => setSelectedWard(e.target.value)}
+                  className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white"
+                >
+                  <option value="" disabled>Select your ward...</option>
+                  {wards.map((ward) => (
+                    <option key={ward.id} value={ward.id}>
+                      {ward.name} (Ward {ward.id})
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
             <button
               type="submit"
               disabled={loading}
-              className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 rounded-xl transition-all flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed"
+              className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 rounded-xl transition-all flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed mt-2"
             >
               {loading ? <Loader2 className="animate-spin" /> : <>Sign Up <ArrowRight size={18} /></>}
             </button>

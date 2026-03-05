@@ -1,12 +1,15 @@
 import React from 'react';
 import { Link, Outlet, useLocation } from 'react-router-dom';
 import { Logo } from './Logo';
-import { Home, PlusCircle, List, LogIn, LogOut } from 'lucide-react';
+import { Home, PlusCircle, List, LogIn, LogOut, ShieldCheck } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
 export function Layout() {
   const location = useLocation();
   const { user, signOut } = useAuth();
+
+  // Check if the logged-in user is an admin
+  const isAdmin = user?.user_metadata?.role === 'admin';
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col font-sans">
@@ -21,14 +24,28 @@ export function Layout() {
           <nav className="hidden md:flex items-center gap-6">
             {user ? (
               <>
-                <NavLink to="/dashboard" active={location.pathname === '/dashboard'}>My Reports</NavLink>
-                <Link 
-                  to="/report" 
-                  className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-full font-medium transition-colors flex items-center gap-2 shadow-sm hover:shadow-md"
-                >
-                  <PlusCircle size={18} />
-                  Report Issue
-                </Link>
+                {isAdmin ? (
+                  /* --- UPDATED ADMIN BUTTON --- */
+                  <Link 
+                    to="/admin/issues" 
+                    className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-full font-medium transition-colors flex items-center gap-2 shadow-sm hover:shadow-md"
+                  >
+                    <ShieldCheck size={18} />
+                    Admin Panel
+                  </Link>
+                ) : (
+                  <>
+                    <NavLink to="/dashboard" active={location.pathname === '/dashboard'}>My Reports</NavLink>
+                    <Link 
+                      to="/report" 
+                      className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-full font-medium transition-colors flex items-center gap-2 shadow-sm hover:shadow-md"
+                    >
+                      <PlusCircle size={18} />
+                      Report Issue
+                    </Link>
+                  </>
+                )}
+                
                 <button 
                   onClick={() => signOut()}
                   className="text-slate-500 hover:text-slate-800 transition-colors"
@@ -58,11 +75,33 @@ export function Layout() {
       {/* Mobile Bottom Nav */}
       <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 px-6 py-3 flex justify-between items-center z-50 pb-safe">
         <MobileNavLink to="/" icon={<Home size={24} />} label="Home" active={location.pathname === '/'} />
-        <MobileNavLink to="/report" icon={<PlusCircle size={24} />} label="Report" active={location.pathname === '/report'} highlight />
+        
         {user ? (
-          <MobileNavLink to="/dashboard" icon={<List size={24} />} label="Status" active={location.pathname === '/dashboard'} />
+          isAdmin ? (
+            <>
+              {/* Admin Mobile Layout */}
+              <MobileNavLink to="/admin/issues" icon={<ShieldCheck size={24} />} label="Admin" active={location.pathname === '/admin/issues'} highlight />
+              <button 
+                onClick={() => signOut()} 
+                className="flex flex-col items-center gap-1 text-slate-400 hover:text-slate-600"
+              >
+                <div><LogOut size={24} /></div>
+                <span className="text-[10px] font-medium">Logout</span>
+              </button>
+            </>
+          ) : (
+            <>
+              {/* Citizen Mobile Layout */}
+              <MobileNavLink to="/report" icon={<PlusCircle size={24} />} label="Report" active={location.pathname === '/report'} highlight />
+              <MobileNavLink to="/dashboard" icon={<List size={24} />} label="Status" active={location.pathname === '/dashboard'} />
+            </>
+          )
         ) : (
-          <MobileNavLink to="/login" icon={<LogIn size={24} />} label="Login" active={location.pathname === '/login'} />
+          <>
+            {/* Logged Out Mobile Layout */}
+            <MobileNavLink to="/report" icon={<PlusCircle size={24} />} label="Report" active={location.pathname === '/report'} highlight />
+            <MobileNavLink to="/login" icon={<LogIn size={24} />} label="Login" active={location.pathname === '/login'} />
+          </>
         )}
       </nav>
     </div>

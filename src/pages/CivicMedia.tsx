@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import axios from 'axios';
 import { MapPin, AlertCircle, Loader2 } from 'lucide-react';
+import IssueDetailsModal from '../components/IssueDetailsModal'; // <-- Added Import
 
 interface FeedItem {
   id: string;
@@ -12,6 +13,8 @@ interface FeedItem {
   created_at: string;
   latitude: number;
   longitude: number;
+  phone_number?: string; // Optional for modal
+  ward_id?: string; // Optional for modal
 }
 
 export default function CivicMedia() {
@@ -20,6 +23,9 @@ export default function CivicMedia() {
   const [wardName, setWardName] = useState<string>('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // <-- Added Modal State
+  const [selectedPost, setSelectedPost] = useState<FeedItem | null>(null);
 
   const lat = searchParams.get('lat');
   const lon = searchParams.get('lon');
@@ -83,9 +89,9 @@ export default function CivicMedia() {
   }
 
   return (
-    <div className="max-w-md mx-auto pb-12">
+    <div className="max-w-md mx-auto pb-12 relative">
       
-      {/* Standard Page Header (Matches Home page aesthetic) */}
+      {/* Standard Page Header */}
       <div className="py-6 px-4 md:px-0">
         <h1 className="text-2xl md:text-3xl font-bold text-slate-900 tracking-tight">
           Local Feed
@@ -109,12 +115,15 @@ export default function CivicMedia() {
           feed.map((post) => (
             <article key={post.id} className="bg-white pb-5 mb-4 shadow-sm sm:rounded-2xl border border-gray-100 overflow-hidden">
               
-              {/* Image */}
-              <div className="w-full aspect-square bg-gray-200 relative">
+              {/* Image - Now clickable to open Modal */}
+              <div 
+                className="w-full aspect-square bg-gray-200 relative cursor-pointer group"
+                onClick={() => setSelectedPost(post)}
+              >
                 <img 
                   src={post.image_url} 
                   alt={post.category} 
-                  className="w-full h-full object-cover"
+                  className="w-full h-full object-cover group-hover:opacity-90 transition-opacity"
                 />
                 {/* Status Badge */}
                 <div className="absolute top-3 right-3 bg-black/70 backdrop-blur-md text-white px-3 py-1 rounded-full text-xs font-semibold capitalize tracking-wide border border-white/10 shadow-lg">
@@ -137,6 +146,15 @@ export default function CivicMedia() {
           ))
         )}
       </div>
+
+      {/* <-- Added Modal Rendering --> */}
+      {selectedPost && (
+        <IssueDetailsModal 
+          issue={selectedPost as any} // Cast to bypass strict AdminIssue interface requirements
+          onClose={() => setSelectedPost(null)} 
+        />
+      )}
+
     </div>
   );
 }

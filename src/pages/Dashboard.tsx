@@ -2,13 +2,17 @@ import React, { useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import axios from 'axios';
 import { MapPin, Clock, CheckCircle, AlertCircle, Loader2 } from 'lucide-react';
+import IssueDetailsModal from '../components/IssueDetailsModal'; // <-- Added Import
 
 interface Report {
   id: string;
+  category: string; // Added to match modal
   description: string;
-  status: 'pending' | 'in_progress' | 'resolved' | 'rejected';
+  status: string; // Simplified to string to match modal
   image_url: string;
   created_at: string;
+  phone_number?: string; // Optional for modal compatibility
+  ward_id?: string; // Optional for modal compatibility
   latitude?: number;
   longitude?: number;
 }
@@ -18,18 +22,19 @@ export default function DashboardPage() {
   const [reports, setReports] = useState<Report[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  
+  // <-- Added Modal State
+  const [selectedReport, setSelectedReport] = useState<Report | null>(null);
 
   useEffect(() => {
     const fetchReports = async () => {
       try {
         const apiUrl = import.meta.env.VITE_API_URL;
-        // Mock data for demonstration if API fails or user is not logged in
         if (!user || !user.phone) {
            setLoading(false);
            return;
         }
         
-        // Attempt to fetch real data
         const response = await axios.get(`${apiUrl}/complaints/user/${encodeURIComponent(user?.phone)}`);
         setReports(response.data);
         setLoading(false);
@@ -89,7 +94,11 @@ export default function DashboardPage() {
       ) : (
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
           {reports.map((report) => (
-            <div key={report.id} className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden hover:shadow-md transition-shadow group">
+            <div 
+              key={report.id} 
+              onClick={() => setSelectedReport(report)} // <-- Make card clickable
+              className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden hover:shadow-md transition-shadow group cursor-pointer"
+            >
               <div className="relative h-48 overflow-hidden">
                 <img 
                   src={report.image_url} 
@@ -109,15 +118,10 @@ export default function DashboardPage() {
                     {new Date(report.created_at).toLocaleDateString()}
                   </p>
                   {report.latitude && (
-                    <a 
-                      href={`https://www.google.com/maps/search/?api=1&query=${report.latitude},${report.longitude}`} 
-                      target="_blank" 
-                      rel="noreferrer"
-                      className="text-xs text-blue-600 hover:underline flex items-center gap-1"
-                    >
+                    <div className="text-xs text-blue-600 flex items-center gap-1">
                       <MapPin size={12} />
-                      View Map
-                    </a>
+                      Location Linked
+                    </div>
                   )}
                 </div>
                 
@@ -127,11 +131,20 @@ export default function DashboardPage() {
                 
                 <div className="pt-4 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
                   <span>ID: #{report.id}</span>
+                  <span className="font-semibold text-blue-600">{report.category}</span>
                 </div>
               </div>
             </div>
           ))}
         </div>
+      )}
+
+      {/* <-- Added Modal Rendering --> */}
+      {selectedReport && (
+        <IssueDetailsModal 
+          issue={selectedReport as any} // Cast to any to bypass strict type checking for missing optional fields
+          onClose={() => setSelectedReport(null)} 
+        />
       )}
     </div>
   );

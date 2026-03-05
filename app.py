@@ -295,5 +295,130 @@ def get_complaints_by_location():
         cur.close()
         conn.close()
 
+# 5. ADMIN: Get complaints (Filtered by Ward)
+@app.route('/api/v1/admin/complaints', methods=['GET'])
+def get_all_complaints():
+    # 1. Grab the user ID from the frontend request
+    admin_id = request.args.get('user_id')
+    
+    if not admin_id:
+        return jsonify({"error": "User ID is required for access"}), 401
+
+    conn = get_db_connection()
+    cur = conn.cursor()
+    
+    try:
+        # 2. Check the profiles table to verify role and get their ward
+        profile_query = "SELECT role, ward_allocated FROM public.profiles WHERE id = %s;"
+        cur.execute(profile_query, (admin_id,))
+        profile = cur.fetchone()
+
+        # Reject if they aren't in the table or aren't an admin
+        if not profile or profile[0] != 'admin':
+            return jsonify({"error": "Unauthorized: Admin access required"}), 403
+            
+        ward_allocated = profile[1]
+
+        # 3. Fetch complaints based on their ward allocation
+        if ward_allocated is not None:
+            # Filter to just their assigned ward
+            query = """
+                SELECT id, category, description, status, image_url, created_at, 
+                       phone_number, ward_id, ST_Y(geom) as lat, ST_X(geom) as lon
+                FROM complaints 
+                WHERE ward_id = %s
+                ORDER BY created_at DESC;
+            """
+            cur.execute(query, (ward_allocated,))
+        else:
+            # Fallback: If an admin has no ward assigned, they see everything
+            query = """
+                SELECT id, category, description, status, image_url, created_at, 
+                       phone_number, ward_id, ST_Y(geom) as lat, ST_X(geom) as lon
+                FROM complaints 
+                ORDER BY created_at DESC;
+            """
+            cur.execute(query)
+
+        records = cur.fetchall()
+
+        complaints = []
+        for row in records:
+            db_date = row[5]
+            iso_date = db_date.isoformat() + 'Z' if isinstance(db_date, datetime.datetime) else None
+
+            complaints.append({
+                "id": str(row[0]),
+                "category": row[1],
+                "description": row[2],
+                "status": row[3].lower() if row[3] else 'pending',
+                "image_url": row[4],
+                "created_at": iso_date,
+                "phone_number": row[6],
+                "ward_id": row[7],
+                "latitude": row[8],
+                "longitude": row[9]
+            })
+
+        return jsonify({
+            "status": "Success", 
+            "ward_allocated": ward_allocated,
+            "count": len(complaints),
+            "data": complaints
+        }), 200
+        
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    finally:
+        cur.close()
+        conn.close()
+
+# 6. ADMIN: Update complaint status
+@app.route('/api/v1/admin/complaints/<string:issue_id>/status', methods=['PATCH'])
+def update_complaint_status(issue_id):
+    new_status = request.json.get('status')
+    valid_statuses = ['pending', 'in_progress', 'resolved', 'rejected']
+
+    if new_status not in valid_statuses:
+        return jsonify({"error": "Invalid status"}), 400
+
+    conn = get_db_connection()
+    cur = conn.cursor()
+    try:
+        update_query = "UPDATE complaints SET status = %s WHERE id = %s RETURNING id;"
+        cur.execute(update_query, (new_status, issue_id))
+        
+        if cur.fetchone() is None:
+            return jsonify({"error": "Complaint not found"}), 404
+            
+        conn.commit()
+        return jsonify({"status": "Success", "message": f"Issue {issue_id} updated to {new_status}"}), 200
+    except Exception as e:
+        conn.rollback()
+        return jsonify({"error": str(e)}), 500
+    finally:
+        cur.close()
+        conn.close()
+
+# 7. Fetch all wards for the frontend dropdowns
+@app.route('/api/v1/wards', methods=['GET'])
+def get_wards():
+    conn = get_db_connection()
+    cur = conn.cursor()
+    try:
+        # Fetch ward IDs and names, sorted alphabetically
+        cur.execute("SELECT id, name FROM wards ORDER BY name ASC;")
+        records = cur.fetchall()
+        
+        wards = [{"id": row[0], "name": row[1]} for row in records]
+        
+        return jsonify({"status": "Success", "data": wards}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    finally:
+        cur.close()
+        conn.close()
+
+
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5000)

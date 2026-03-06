@@ -3,15 +3,10 @@ import { useNavigate } from 'react-router-dom';
 import { Upload, Loader2, CheckCircle, AlertTriangle, X } from 'lucide-react';
 import axios from 'axios';
 import { useAuth } from '../context/AuthContext';
+import IssueDetailsModal from '../components/IssueDetailsModal';
 
 const CATEGORIES = [
-  'Pothole',
-  'Streetlight',
-  'Garbage',
-  'Graffiti',
-  'Water Leak',
-  'Signage',
-  'Other'
+  'Pothole', 'Streetlight', 'Garbage', 'Graffiti', 'Water Leak', 'Signage', 'Other'
 ];
 
 export default function ReportPage() {
@@ -26,21 +21,23 @@ export default function ReportPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+  
+  // NEW: State for Duplicate Detection Flow
+  const [duplicateIssue, setDuplicateIssue] = useState<any | null>(null);
+  const [isVoting, setIsVoting] = useState(false);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0];
     if (!selectedFile) return;
 
-    // Create preview
     const objectUrl = URL.createObjectURL(selectedFile);
     setPreview(objectUrl);
     setFile(selectedFile);
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  // Added a forceNew parameter to skip the duplicate check
+  const submitForm = async (forceNew: boolean = false) => {
     if (!file) return;
-
     setLoading(true);
     setError(null);
 
@@ -49,35 +46,64 @@ export default function ReportPage() {
     formData.append('category', category);
     formData.append('description', description);
     formData.append('phone', user?.phone || 'anonymous');
+    formData.append('force_new', forceNew ? 'true' : 'false');
 
     try {
       const apiUrl = import.meta.env.VITE_API_URL;
       await axios.post(`${apiUrl}/report`, formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
+        headers: { 'Content-Type': 'multipart/form-data' },
       });
       
       setSuccess(true);
       setTimeout(() => navigate('/dashboard'), 2000);
     } catch (err: any) {
       console.error(err);
-      const apiUrl = import.meta.env.VITE_API_URL;
       
-      let errorMessage = "Failed to submit report.";
-      
-      if (err.message?.includes('404')) {
-        errorMessage = `API Endpoint not found (404). Trying to reach: ${apiUrl}/report`;
-      } else if (err.code === 'ERR_NETWORK') {
-        errorMessage = `Cannot connect to server at ${apiUrl}/report. Is the backend running?`;
-      } else {
-        errorMessage = err.response?.data?.message || err.message || errorMessage;
+      // If it's a 409 Duplicate, trigger the modal and stop
+      if (err.response?.status === 409 && err.response?.data?.existing_issue) {
+         setDuplicateIssue(err.response.data.existing_issue);
+         setLoading(false);
+         return;
       }
+
+      const apiUrl = import.meta.env.VITE_API_URL;
+      let errorMessage = "Failed to submit report.";
+      if (err.message?.includes('404')) errorMessage = `API Endpoint not found.`;
+      else if (err.code === 'ERR_NETWORK') errorMessage = `Cannot connect to server at ${apiUrl}.`;
+      else errorMessage = err.response?.data?.message || err.message || errorMessage;
       
       setError(errorMessage);
     } finally {
-      setLoading(false);
+      if (!duplicateIssue) setLoading(false);
     }
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    submitForm(false); // First attempt checks for duplicates
+  };
+
+  // Action: User clicked "Yes, it's the same"
+  const handleConfirmSame = async () => {
+    if (!duplicateIssue) return;
+    setIsVoting(true);
+    try {
+      const apiUrl = import.meta.env.VITE_API_URL;
+      await axios.post(`${apiUrl}/complaints/${duplicateIssue.id}/vote`);
+      setDuplicateIssue(null);
+      setSuccess(true); // Treat it as a successful report flow
+      setTimeout(() => navigate('/dashboard'), 2000);
+    } catch (err) {
+      alert("Failed to add vote. Please try again.");
+    } finally {
+      setIsVoting(false);
+    }
+  };
+
+  // Action: User clicked "No, report as new"
+  const handleConfirmDifferent = () => {
+    setDuplicateIssue(null); // Close modal
+    submitForm(true); // Resubmit with forceNew = true
   };
 
   const clearFile = () => {
@@ -99,7 +125,7 @@ export default function ReportPage() {
   }
 
   return (
-    <div className="max-w-2xl mx-auto">
+    <div className="max-w-2xl mx-auto relative">
       <h1 className="text-3xl font-bold text-slate-900 mb-6">Report an Issue</h1>
       
       <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
@@ -111,10 +137,8 @@ export default function ReportPage() {
         )}
 
         <form onSubmit={handleSubmit} className="space-y-6">
-          {/* Image Upload Area */}
           <div className="space-y-2">
             <label className="block text-sm font-medium text-slate-700">Evidence Photo</label>
-            
             {!preview ? (
               <div 
                 onClick={() => fileInputRef.current?.click()}
@@ -138,17 +162,9 @@ export default function ReportPage() {
                 </button>
               </div>
             )}
-            
-            <input 
-              type="file" 
-              ref={fileInputRef}
-              onChange={handleFileChange}
-              accept="image/*" 
-              className="hidden" 
-            />
+            <input type="file" ref={fileInputRef} onChange={handleFileChange} accept="image/*" className="hidden" />
           </div>
 
-          {/* Category Selection */}
           <div className="space-y-2">
             <label htmlFor="category" className="block text-sm font-medium text-slate-700">Category</label>
             <select
@@ -157,13 +173,10 @@ export default function ReportPage() {
               onChange={(e) => setCategory(e.target.value)}
               className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none bg-white"
             >
-              {CATEGORIES.map(cat => (
-                <option key={cat} value={cat}>{cat}</option>
-              ))}
+              {CATEGORIES.map(cat => <option key={cat} value={cat}>{cat}</option>)}
             </select>
           </div>
 
-          {/* Description */}
           <div className="space-y-2">
             <label htmlFor="description" className="block text-sm font-medium text-slate-700">Description</label>
             <textarea
@@ -186,6 +199,18 @@ export default function ReportPage() {
           </button>
         </form>
       </div>
+
+      {/* Render Duplicate Modal if triggered */}
+      {duplicateIssue && (
+        <IssueDetailsModal 
+          issue={duplicateIssue}
+          onClose={() => setDuplicateIssue(null)}
+          duplicateMode={true}
+          onConfirmSame={handleConfirmSame}
+          onConfirmDifferent={handleConfirmDifferent}
+          isVoting={isVoting}
+        />
+      )}
     </div>
   );
 }

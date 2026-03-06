@@ -1,10 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import axios from 'axios';
-import { Loader2, AlertCircle, MapPin, ExternalLink, CheckCircle } from 'lucide-react';
+import { Loader2, AlertCircle, MapPin, ExternalLink, CheckCircle, ThumbsUp } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import IssueDetailsModal from '../components/IssueDetailsModal';
 
-// Exported so the Modal component can use this type
 export interface AdminIssue {
   id: string;
   category: string;
@@ -16,6 +15,7 @@ export interface AdminIssue {
   ward_id: string;
   latitude: number;
   longitude: number;
+  upvotes: number; // --- NEW FIELD ---
 }
 
 export default function AdminIssues() {
@@ -23,8 +23,6 @@ export default function AdminIssues() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
-  
-  // State for the popup modal
   const [selectedIssue, setSelectedIssue] = useState<AdminIssue | null>(null);
 
   const apiUrl = import.meta.env.VITE_API_URL;
@@ -35,7 +33,6 @@ export default function AdminIssues() {
 
   const fetchIssues = async () => {
     try {
-      // 1. Get the securely logged-in user from Supabase
       const { data: { user } } = await supabase.auth.getUser();
       
       if (!user) {
@@ -44,14 +41,11 @@ export default function AdminIssues() {
         return;
       }
 
-      // 2. Fetch issues, passing the user_id so the backend can filter by their assigned ward
       const response = await axios.get(`${apiUrl}/admin/complaints?user_id=${user.id}`);
-      
       setIssues(response.data.data);
       setLoading(false);
     } catch (err: any) {
       console.error(err);
-      // Catch the 403 Unauthorized error specifically
       if (err.response && err.response.status === 403) {
         setError("Unauthorized: You do not have admin permissions to view this dashboard.");
       } else {
@@ -68,12 +62,10 @@ export default function AdminIssues() {
         status: newStatus
       });
       
-      // Update the local state so the UI reflects the change instantly
       setIssues(issues.map(issue => 
         issue.id === issueId ? { ...issue, status: newStatus } : issue
       ));
 
-      // Also update the modal's state if it is currently open
       if (selectedIssue && selectedIssue.id === issueId) {
         setSelectedIssue({ ...selectedIssue, status: newStatus });
       }
@@ -128,7 +120,6 @@ export default function AdminIssues() {
         </div>
       </div>
 
-      {/* Admin Data Table */}
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden relative z-0">
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-slate-200">
@@ -145,7 +136,6 @@ export default function AdminIssues() {
               {issues.map((issue) => (
                 <tr key={issue.id} className="hover:bg-slate-50 transition-colors">
                   
-                  {/* Photo Column - Clickable to open Modal */}
                   <td className="px-6 py-4 whitespace-nowrap">
                     <button 
                       onClick={() => setSelectedIssue(issue)}
@@ -160,16 +150,21 @@ export default function AdminIssues() {
                     </button>
                   </td>
 
-                  {/* Details Column */}
                   <td className="px-6 py-4">
                     <div className="text-sm font-bold text-slate-900">{issue.category}</div>
                     <div className="text-sm text-slate-500 max-w-xs truncate" title={issue.description}>
                       {issue.description}
                     </div>
-                    <div className="text-xs text-slate-400 mt-1">ID: #{issue.id}</div>
+                    {/* --- UPVOTES BADGE AND ID --- */}
+                    <div className="flex items-center gap-3 mt-2">
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-blue-50 text-blue-700 border border-blue-100">
+                        <ThumbsUp size={12} />
+                        {issue.upvotes} {issue.upvotes === 1 ? 'Vote' : 'Votes'}
+                      </span>
+                      <span className="text-xs text-slate-400">ID: #{issue.id}</span>
+                    </div>
                   </td>
 
-                  {/* Location & Contact Column */}
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="flex items-center text-sm text-blue-600 hover:text-blue-800 mb-1">
                       <MapPin size={14} className="mr-1" />
@@ -186,7 +181,6 @@ export default function AdminIssues() {
                     <div className="text-xs font-mono text-slate-400 mt-1">{issue.phone_number || 'No Phone'}</div>
                   </td>
 
-                  {/* Date Column */}
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="text-sm text-slate-900">
                       {new Date(issue.created_at).toLocaleDateString()}
@@ -196,7 +190,6 @@ export default function AdminIssues() {
                     </div>
                   </td>
 
-                  {/* Status Dropdown Column */}
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="flex items-center gap-3">
                       <select
@@ -227,7 +220,6 @@ export default function AdminIssues() {
         </div>
       </div>
 
-      {/* Conditionally render the Details Modal when an issue is clicked */}
       {selectedIssue && (
         <IssueDetailsModal 
           issue={selectedIssue} 

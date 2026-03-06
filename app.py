@@ -47,91 +47,97 @@ def report_issue():
     category = request.form.get('category', 'No category')
     desc = request.form.get('description', 'No description')
     phone = request.form.get('phone')
+    force_new = request.form.get('force_new', 'false').lower() == 'true'
     
-    # Save temporarily for forensics
     temp_file_path = os.path.join(UPLOAD_FOLDER, file.filename)
     file.save(temp_file_path)
 
-    # --- STEP 1: FORENSIC VERIFICATION (Authenticity Gap) ---
     gps_data = extract_gps(temp_file_path)
     if not gps_data:
-        os.remove(temp_file_path) # Delete fake image
+        os.remove(temp_file_path)
         return jsonify({"status": "Rejected", "reason": "Image lacks GPS metadata"}), 400
     
     lat, lon = gps_data
-    print(f"Forensics Passed. GPS: {lat}, {lon}")
-
     conn = get_db_connection()
     cur = conn.cursor()
 
-    # --- STEP 2: REDUNDANCY CHECK (Radius Gap) ---
-    check_query = """
-        SELECT id, category FROM complaints 
-        WHERE ST_DWithin(geom, ST_SetSRID(ST_MakePoint(%s, %s), 4326), 20)
-        AND status != 'Resolved';
-    """
-    cur.execute(check_query, (lon, lat))
-    duplicate, data = False, cur.fetchall()
-    
-    for issue in data:
-        if issue[1] == category:
-            duplicate = True
-            break
+    # --- UPDATED: REDUNDANCY CHECK (Only if not forced) ---
+    if not force_new:
+        # Cast to geography to ensure 20 means 20 meters, not 20 degrees
+        check_query = """
+            SELECT id, category, description, status, image_url, created_at, phone_number, ward_id 
+            FROM complaints 
+            WHERE ST_DWithin(geom::geography, ST_SetSRID(ST_MakePoint(%s, %s), 4326)::geography, 20)
+            AND status != 'resolved';
+        """
+        cur.execute(check_query, (lon, lat))
+        data = cur.fetchall()
+        
+        duplicate_issue = None
+        for issue in data:
+            if issue[1] == category:
+                # Format datetime safely
+                db_date = issue[5]
+                iso_date = db_date.isoformat() + 'Z' if isinstance(db_date, datetime.datetime) else None
+                
+                duplicate_issue = {
+                    "id": str(issue[0]),
+                    "category": issue[1],
+                    "description": issue[2],
+                    "status": issue[3].lower() if issue[3] else 'pending',
+                    "image_url": issue[4],
+                    "created_at": iso_date,
+                    "phone_number": issue[6],
+                    "ward_id": issue[7],
+                    "latitude": lat,
+                    "longitude": lon
+                }
+                break
 
-    if duplicate:
-        cur.close()
-        conn.close()
-        os.remove(temp_file_path) # Clean up staging file
-        # 409 Conflict is the standard status code for duplicate entries
-        return jsonify({"status": "Duplicate", "message": "This issue has already been reported nearby."}), 409
+        if duplicate_issue:
+            cur.close()
+            conn.close()
+            os.remove(temp_file_path)
+            # Return the duplicate data to the frontend modal
+            return jsonify({
+                "status": "Duplicate", 
+                "message": "This issue has already been reported nearby.",
+                "existing_issue": duplicate_issue
+            }), 409
 
-    # --- STEP 3: SPATIAL ROUTING (Routing Gap) ---
+    # --- SPATIAL ROUTING ---
     routing_query = """
         SELECT id, name FROM wards 
         WHERE ST_Contains(geom, ST_SetSRID(ST_MakePoint(%s, %s), 4326));
     """
     cur.execute(routing_query, (lon, lat))
     ward = cur.fetchone()
-    
     ward_id = ward[0] if ward else None
     ward_name = ward[1] if ward else "Unknown Area"
 
-    # --- STEP 4: PREPARE AND UPLOAD COMPRESSED IMAGE ---
+    # --- UPLOAD COMPRESSED IMAGE ---
     compression_success = compress_image(temp_file_path, quality=80)
-    
-    if not compression_success:
-        print("Compression failed, uploading original uncompressed file.")
-
-    # 2. Create a unique filename for the bucket
     file_extension = os.path.splitext(file.filename)[1]
     unique_filename = f"{uuid.uuid4()}{file_extension}"
 
-    # 3. Upload to Supabase Storage
     try:
         with open(temp_file_path, 'rb') as f:
             supabase.storage.from_(SUPABASE_BUCKET).upload(
-                path=unique_filename,
-                file=f,
-                file_options={"content-type": file.mimetype}
+                path=unique_filename, file=f, file_options={"content-type": file.mimetype}
             )
-        
-        # Get the public URL to store in the database
         public_url = supabase.storage.from_(SUPABASE_BUCKET).get_public_url(unique_filename)
-        
     except Exception as e:
         cur.close()
         conn.close()
         os.remove(temp_file_path)
-        # 500 Internal Server Error for storage failure
-        return jsonify({"error": f"Failed to upload to cloud storage: {str(e)}"}), 500
+        return jsonify({"error": f"Failed to upload: {str(e)}"}), 500
 
-    # Clean up the local temporary file
     os.remove(temp_file_path)
 
-    # --- STEP 5: SAVE TO DATABASE ---
+    # --- SAVE TO DATABASE ---
     insert_query = """
-        INSERT INTO complaints (image_url, description, geom, ward_id, category, phone_number)
-        VALUES (%s, %s, ST_SetSRID(ST_MakePoint(%s, %s), 4326), %s, %s, %s)
+        INSERT INTO complaints (image_url, description, geom, ward_id, category, phone_number, upvotes)
+        VALUES (%s, %s, ST_SetSRID(ST_MakePoint(%s, %s), 4326), %s, %s, %s, 0)
         RETURNING id;
     """
     cur.execute(insert_query, (public_url, desc, lon, lat, ward_id, category, phone))
@@ -141,13 +147,10 @@ def report_issue():
     cur.close()
     conn.close()
 
-    # 201 Created is the standard status code for successful record creation
     return jsonify({
         "status": "Success", 
         "complaint_id": new_id,
         "routed_to_ward": ward_name,
-        "forensics": "Verified",
-        "compression": "Applied" if compression_success else "Failed/Not Applied",
         "image_url": public_url
     }), 201
 
@@ -298,7 +301,6 @@ def get_complaints_by_location():
 # 5. ADMIN: Get complaints (Filtered by Ward)
 @app.route('/api/v1/admin/complaints', methods=['GET'])
 def get_all_complaints():
-    # 1. Grab the user ID from the frontend request
     admin_id = request.args.get('user_id')
     
     if not admin_id:
@@ -308,33 +310,29 @@ def get_all_complaints():
     cur = conn.cursor()
     
     try:
-        # 2. Check the profiles table to verify role and get their ward
         profile_query = "SELECT role, ward_allocated FROM public.profiles WHERE id = %s;"
         cur.execute(profile_query, (admin_id,))
         profile = cur.fetchone()
 
-        # Reject if they aren't in the table or aren't an admin
         if not profile or profile[0] != 'admin':
             return jsonify({"error": "Unauthorized: Admin access required"}), 403
             
         ward_allocated = profile[1]
 
-        # 3. Fetch complaints based on their ward allocation
+        # --- ADDED COALESCE(upvotes, 0) TO BOTH QUERIES ---
         if ward_allocated is not None:
-            # Filter to just their assigned ward
             query = """
                 SELECT id, category, description, status, image_url, created_at, 
-                       phone_number, ward_id, ST_Y(geom) as lat, ST_X(geom) as lon
+                       phone_number, ward_id, ST_Y(geom) as lat, ST_X(geom) as lon, COALESCE(upvotes, 0) as upvotes
                 FROM complaints 
                 WHERE ward_id = %s
                 ORDER BY created_at DESC;
             """
             cur.execute(query, (ward_allocated,))
         else:
-            # Fallback: If an admin has no ward assigned, they see everything
             query = """
                 SELECT id, category, description, status, image_url, created_at, 
-                       phone_number, ward_id, ST_Y(geom) as lat, ST_X(geom) as lon
+                       phone_number, ward_id, ST_Y(geom) as lat, ST_X(geom) as lon, COALESCE(upvotes, 0) as upvotes
                 FROM complaints 
                 ORDER BY created_at DESC;
             """
@@ -357,7 +355,8 @@ def get_all_complaints():
                 "phone_number": row[6],
                 "ward_id": row[7],
                 "latitude": row[8],
-                "longitude": row[9]
+                "longitude": row[9],
+                "upvotes": row[10] # --- NEW MAPPING ---
             })
 
         return jsonify({
@@ -414,6 +413,27 @@ def get_wards():
         
         return jsonify({"status": "Success", "data": wards}), 200
     except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    finally:
+        cur.close()
+        conn.close()
+
+# 8. Vote End Point
+@app.route('/api/v1/complaints/<string:issue_id>/vote', methods=['POST'])
+def vote_issue(issue_id):
+    conn = get_db_connection()
+    cur = conn.cursor()
+    try:
+        # Increment the upvotes count safely
+        update_query = "UPDATE complaints SET upvotes = COALESCE(upvotes, 1) + 1 WHERE id = %s RETURNING id;"
+        cur.execute(update_query, (issue_id,))
+        if not cur.fetchone():
+            return jsonify({"error": "Issue not found"}), 404
+            
+        conn.commit()
+        return jsonify({"status": "Success", "message": "Vote registered successfully"}), 200
+    except Exception as e:
+        conn.rollback()
         return jsonify({"error": str(e)}), 500
     finally:
         cur.close()

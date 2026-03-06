@@ -18,7 +18,8 @@ CREATE TABLE complaints (
     geom GEOMETRY(Point, 4326),
     ward_id INTEGER REFERENCES wards(id),
     phone VARCHAR(200),
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    upvotes INTEGER DEFAULT 0
 );
 
 -- 4. Insert dummy ward

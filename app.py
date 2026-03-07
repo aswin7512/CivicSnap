@@ -9,7 +9,6 @@ import datetime
 app = Flask(__name__)
 
 # --- ENABLE CORS ---
-# This allows external domains (like your frontend) to securely talk to this API
 CORS(app)
 
 # Supabase Configuration
@@ -28,7 +27,6 @@ if not os.path.exists(UPLOAD_FOLDER):
 # ---------------------------------------------------------
 
 # 1. Health Check Endpoint
-# Replaces your index.html. Used to verify the API is online.
 @app.route('/', methods=['GET'])
 def health_check():
     return jsonify({
@@ -61,7 +59,6 @@ def report_issue():
     conn = get_db_connection()
     cur = conn.cursor()
 
-    # --- UPDATED: REDUNDANCY CHECK (Only if not forced) ---
     if not force_new:
         # Cast to geography to ensure 20 means 20 meters, not 20 degrees
         check_query = """
@@ -189,13 +186,13 @@ def get_user_complaints(phone_number):
 
             # Build the exact dictionary the frontend expects
             complaints.append({
-                "id": str(row[0]),           # Cast integer ID to string
+                "id": str(row[0]),
                 "description": row[1],
-                "status": status_val,        # Lowercase status
+                "status": status_val,
                 "image_url": row[3],
-                "created_at": iso_date,      # ISO 8601 formatted date string
-                "latitude": row[5],          # Float from PostGIS ST_Y
-                "longitude": row[6]          # Float from PostGIS ST_X
+                "created_at": iso_date,
+                "latitude": row[5],
+                "longitude": row[6]
             })
         print(complaints)
 
@@ -229,7 +226,6 @@ def get_complaints_by_location():
 
     try:
         # --- STEP 1: Find which ward contains this location ---
-        # Note: PostGIS ST_MakePoint requires (Longitude, Latitude) order
         ward_query = """
             SELECT id, name FROM wards 
             WHERE ST_Contains(geom, ST_SetSRID(ST_MakePoint(%s, %s), 4326));
@@ -356,7 +352,7 @@ def get_all_complaints():
                 "ward_id": row[7],
                 "latitude": row[8],
                 "longitude": row[9],
-                "upvotes": row[10] # --- NEW MAPPING ---
+                "upvotes": row[10]
             })
 
         return jsonify({

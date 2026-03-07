@@ -5,7 +5,6 @@ import { AdminIssue } from '../pages/AdminIssues';
 interface IssueDetailsModalProps {
   issue: AdminIssue;
   onClose: () => void;
-  // New props for Duplicate Checking Mode
   duplicateMode?: boolean;
   onConfirmSame?: () => void;
   onConfirmDifferent?: () => void;

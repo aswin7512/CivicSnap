@@ -8,7 +8,6 @@ export function Layout() {
   const location = useLocation();
   const { user, signOut } = useAuth();
 
-  // Check if the logged-in user is an admin
   const isAdmin = user?.user_metadata?.role === 'admin';
 
   return (
@@ -25,7 +24,6 @@ export function Layout() {
             {user ? (
               <>
                 {isAdmin ? (
-                  /* --- UPDATED ADMIN BUTTON --- */
                   <Link 
                     to="/admin/issues" 
                     className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-full font-medium transition-colors flex items-center gap-2 shadow-sm hover:shadow-md"

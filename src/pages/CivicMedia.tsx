@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import axios from 'axios';
 import { MapPin, AlertCircle, Loader2 } from 'lucide-react';
-import IssueDetailsModal from '../components/IssueDetailsModal'; // <-- Added Import
+import IssueDetailsModal from '../components/IssueDetailsModal';
 
 interface FeedItem {
   id: string;
@@ -13,8 +13,8 @@ interface FeedItem {
   created_at: string;
   latitude: number;
   longitude: number;
-  phone_number?: string; // Optional for modal
-  ward_id?: string; // Optional for modal
+  phone_number?: string;
+  ward_id?: string;
 }
 
 export default function CivicMedia() {
@@ -150,7 +150,7 @@ export default function CivicMedia() {
       {/* <-- Added Modal Rendering --> */}
       {selectedPost && (
         <IssueDetailsModal 
-          issue={selectedPost as any} // Cast to bypass strict AdminIssue interface requirements
+          issue={selectedPost as any}
           onClose={() => setSelectedPost(null)} 
         />
       )}

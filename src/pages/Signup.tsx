@@ -19,14 +19,12 @@ export default function SignupPage() {
   const [error, setError] = useState<string | null>(null);
   const navigate = useNavigate();
 
-  // New State for Role and Ward Management
   const [role, setRole] = useState<'citizen' | 'admin'>('citizen');
   const [selectedWard, setSelectedWard] = useState('');
   const [wards, setWards] = useState<Ward[]>([]);
 
   const apiUrl = import.meta.env.VITE_API_URL;
 
-  // Fetch wards only when the user selects the "admin" role
   useEffect(() => {
     if (role === 'admin' && wards.length === 0) {
       axios.get(`${apiUrl}/wards`)
@@ -104,7 +102,6 @@ export default function SignupPage() {
 
       if (error) throw error;
       
-      // Update display name just in case it wasn't captured
       await supabase.auth.updateUser({ data: { display_name: name } });
       
       // Route based on role

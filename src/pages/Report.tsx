@@ -80,10 +80,9 @@ export default function ReportPage() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    submitForm(false); // First attempt checks for duplicates
+    submitForm(false);
   };
 
-  // Action: User clicked "Yes, it's the same"
   const handleConfirmSame = async () => {
     if (!duplicateIssue) return;
     setIsVoting(true);
@@ -91,7 +90,7 @@ export default function ReportPage() {
       const apiUrl = import.meta.env.VITE_API_URL;
       await axios.post(`${apiUrl}/complaints/${duplicateIssue.id}/vote`);
       setDuplicateIssue(null);
-      setSuccess(true); // Treat it as a successful report flow
+      setSuccess(true);
       setTimeout(() => navigate('/dashboard'), 2000);
     } catch (err) {
       alert("Failed to add vote. Please try again.");
@@ -100,10 +99,9 @@ export default function ReportPage() {
     }
   };
 
-  // Action: User clicked "No, report as new"
   const handleConfirmDifferent = () => {
-    setDuplicateIssue(null); // Close modal
-    submitForm(true); // Resubmit with forceNew = true
+    setDuplicateIssue(null);
+    submitForm(true);
   };
 
   const clearFile = () => {

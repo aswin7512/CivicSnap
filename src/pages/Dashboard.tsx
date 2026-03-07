@@ -2,17 +2,17 @@ import React, { useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import axios from 'axios';
 import { MapPin, Clock, CheckCircle, AlertCircle, Loader2 } from 'lucide-react';
-import IssueDetailsModal from '../components/IssueDetailsModal'; // <-- Added Import
+import IssueDetailsModal from '../components/IssueDetailsModal';
 
 interface Report {
   id: string;
-  category: string; // Added to match modal
+  category: string;
   description: string;
-  status: string; // Simplified to string to match modal
+  status: string;
   image_url: string;
   created_at: string;
-  phone_number?: string; // Optional for modal compatibility
-  ward_id?: string; // Optional for modal compatibility
+  phone_number?: string;
+  ward_id?: string;
   latitude?: number;
   longitude?: number;
 }
@@ -23,7 +23,6 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   
-  // <-- Added Modal State
   const [selectedReport, setSelectedReport] = useState<Report | null>(null);
 
   useEffect(() => {
@@ -96,7 +95,7 @@ export default function DashboardPage() {
           {reports.map((report) => (
             <div 
               key={report.id} 
-              onClick={() => setSelectedReport(report)} // <-- Make card clickable
+              onClick={() => setSelectedReport(report)}
               className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden hover:shadow-md transition-shadow group cursor-pointer"
             >
               <div className="relative h-48 overflow-hidden">
@@ -142,7 +141,7 @@ export default function DashboardPage() {
       {/* <-- Added Modal Rendering --> */}
       {selectedReport && (
         <IssueDetailsModal 
-          issue={selectedReport as any} // Cast to any to bypass strict type checking for missing optional fields
+          issue={selectedReport as any}
           onClose={() => setSelectedReport(null)} 
         />
       )}

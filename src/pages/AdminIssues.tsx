@@ -15,7 +15,7 @@ export interface AdminIssue {
   ward_id: string;
   latitude: number;
   longitude: number;
-  upvotes: number; // --- NEW FIELD ---
+  upvotes: number;
 }
 
 export default function AdminIssues() {

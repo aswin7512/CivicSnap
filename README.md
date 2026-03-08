@@ -55,7 +55,7 @@ frontend/
 
 * Node.js (v16 or higher)
 * npm or yarn
-* The [CivicSnap Flask Backend](https://www.google.com/search?q=https://github.com/aswin7512/CivicSnap) running locally or deployed.
+* The [CivicSnap Flask Backend](https://github.com/aswin7512/CivicSnap) running locally or deployed.
 
 ### 1. Installation
 

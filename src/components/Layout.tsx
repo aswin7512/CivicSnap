@@ -1,6 +1,5 @@
 import React from 'react';
 import { Link, Outlet, useLocation } from 'react-router-dom';
-import { Logo } from './Logo';
 import { Home, PlusCircle, List, LogIn, LogOut, ShieldCheck } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
@@ -16,7 +15,12 @@ export function Layout() {
       <header className="bg-white border-b border-slate-200 sticky top-0 z-50">
         <div className="max-w-5xl mx-auto px-4 h-16 flex items-center justify-between">
           <Link to="/" className="flex items-center gap-3 hover:opacity-80 transition-opacity">
-            <Logo className="w-10 h-10" />
+            {/* --- CHANGED: Replaced Logo component with img tag --- */}
+            <img 
+              src="/logo.png" 
+              alt="Civic Snap Logo" 
+              className="w-10 h-10 object-contain" 
+            />
             <span className="font-bold text-xl tracking-tight text-slate-900">Civic Snap</span>
           </Link>
           

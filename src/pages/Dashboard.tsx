@@ -35,11 +35,19 @@ export default function DashboardPage() {
         }
         
         const response = await axios.get(`${apiUrl}/complaints/user/${encodeURIComponent(user?.phone)}`);
-        setReports(response.data);
+        
+        // SAFETY CHECK 1: Ensure we actually got a list back from the API
+        if (Array.isArray(response.data)) {
+          setReports(response.data);
+        } else {
+          console.error("API did not return an array:", response.data);
+          setError("Received invalid data from the server.");
+        }
+        
         setLoading(false);
       } catch (err) {
         console.error(err);
-        setError("Failed to load reports.");
+        setError("Failed to load reports. Check your backend connection.");
         setLoading(false);
       }
     };
@@ -73,16 +81,30 @@ export default function DashboardPage() {
     );
   }
 
+  // SAFETY CHECK 2: Render an error screen instead of crashing
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[50vh] text-center px-6">
+        <AlertCircle className="w-12 h-12 text-red-500 mb-4" />
+        <h2 className="text-xl font-bold text-slate-900 mb-2">Connection Error</h2>
+        <p className="text-slate-500">{error}</p>
+      </div>
+    );
+  }
+
+  // SAFETY CHECK 3: Ensure reports is definitely an array before mapping
+  const safeReports = Array.isArray(reports) ? reports : [];
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-slate-900">My Reports</h1>
         <div className="text-sm text-slate-500">
-          Showing {reports.length} issues
+          Showing {safeReports.length} issues
         </div>
       </div>
 
-      {reports.length === 0 ? (
+      {safeReports.length === 0 ? (
         <div className="text-center py-12 bg-white rounded-2xl border border-dashed border-slate-300">
           <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-4">
             <CheckCircle className="w-8 h-8 text-slate-300" />
@@ -92,7 +114,7 @@ export default function DashboardPage() {
         </div>
       ) : (
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-          {reports.map((report) => (
+          {safeReports.map((report) => (
             <div 
               key={report.id} 
               onClick={() => setSelectedReport(report)}
@@ -106,7 +128,8 @@ export default function DashboardPage() {
                 />
                 <div className={`absolute top-3 right-3 px-3 py-1 rounded-full text-xs font-semibold border flex items-center gap-1.5 shadow-sm backdrop-blur-md ${getStatusColor(report.status)}`}>
                   {getStatusIcon(report.status)}
-                  <span className="capitalize">{report.status.replace('_', ' ')}</span>
+                  {/* SAFETY CHECK 4: Optional chaining in case status is null */}
+                  <span className="capitalize">{report.status?.replace('_', ' ') || 'Pending'}</span>
                 </div>
               </div>
               
@@ -138,7 +161,6 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* <-- Added Modal Rendering --> */}
       {selectedReport && (
         <IssueDetailsModal 
           issue={selectedReport as any}

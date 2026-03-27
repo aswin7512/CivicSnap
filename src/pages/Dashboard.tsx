@@ -36,12 +36,25 @@ export default function DashboardPage() {
         
         const response = await axios.get(`${apiUrl}/complaints/user/${encodeURIComponent(user?.phone)}`);
         
+        // --- NEW: Sanitize invalid 'NaN' JSON from Python ---
+        let responseData = response.data;
+        
+        if (typeof responseData === 'string') {
+          try {
+            // Replace unquoted NaN with null so the browser can parse it
+            const fixedString = responseData.replace(/:\s*NaN/g, ': null');
+            responseData = JSON.parse(fixedString);
+          } catch (parseError) {
+            console.error("Failed to parse sanitized data", parseError);
+          }
+        }
+        
         // SAFETY CHECK 1: Ensure we actually got a list back from the API
-        if (Array.isArray(response.data)) {
-          setReports(response.data);
+        if (Array.isArray(responseData)) {
+          setReports(responseData);
         } else {
-          console.error("API did not return an array:", response.data);
-          setError("Received invalid data from the server.");
+          console.error("API did not return an array after parsing:", responseData);
+          setError("Received invalid data format from the server.");
         }
         
         setLoading(false);

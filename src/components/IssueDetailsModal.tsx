@@ -42,7 +42,7 @@ export default function IssueDetailsModal({
             </h2>
             {!duplicateMode && (
               <span className={`px-3 py-1 text-xs font-bold rounded-full border uppercase tracking-wide ${getStatusColor(issue.status)}`}>
-                {issue.status.replace('_', ' ')}
+                {issue.status?.replace('_', ' ') || 'Pending'}
               </span>
             )}
           </div>
@@ -117,9 +117,23 @@ export default function IssueDetailsModal({
                 <MapPin className="w-5 h-5 text-slate-400 mt-0.5" />
                 <div>
                   <p className="text-xs font-semibold text-slate-500 uppercase">Location</p>
-                  <a href={`googleusercontent.com/maps.google.com...$${issue.latitude},${issue.longitude}`} target="_blank" rel="noreferrer" className="text-sm text-blue-600 hover:underline">
-                    View Map <ExternalLink size={12} className="inline" />
-                  </a>
+                  
+                  {/* CORRECTED: Valid coordinates check and real map URL */}
+                  {issue.latitude && issue.longitude ? (
+                    <a 
+                      href={`https://www.google.com/maps/search/?api=1&query=${issue.latitude},${issue.longitude}`} 
+                      target="_blank" 
+                      rel="noreferrer" 
+                      className="text-sm text-blue-600 hover:text-blue-800 font-medium flex items-center gap-1 mt-0.5 transition-colors"
+                    >
+                      View on Google Maps <ExternalLink size={14} />
+                    </a>
+                  ) : (
+                    <span className="text-sm text-slate-500 italic mt-0.5 block">
+                      No GPS data available
+                    </span>
+                  )}
+                  
                 </div>
               </div>
             </div>

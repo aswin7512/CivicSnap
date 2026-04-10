@@ -2,6 +2,7 @@ import os
 import uuid
 from flask import Flask, request, jsonify
 from flask_cors import CORS
+from werkzeug.utils import secure_filename
 from supabase import create_client, Client
 from helper import get_db_connection, extract_gps, compress_image
 import datetime
@@ -42,12 +43,20 @@ def report_issue():
         return jsonify({"error": "No image uploaded"}), 400
     
     file = request.files['image']
+    
+    # Secure filename against directory traversal
+    filename = secure_filename(file.filename)
+    if not filename:
+         # Fallback just in case filename is completely invalid
+         file_extension = os.path.splitext(file.filename)[1]
+         filename = f"upload{file_extension}"
+         
     category = request.form.get('category', 'No category')
     desc = request.form.get('description', 'No description')
     phone = request.form.get('phone')
     force_new = request.form.get('force_new', 'false').lower() == 'true'
     
-    temp_file_path = os.path.join(UPLOAD_FOLDER, file.filename)
+    temp_file_path = os.path.join(UPLOAD_FOLDER, filename)
     file.save(temp_file_path)
 
     gps_data = extract_gps(temp_file_path)
@@ -59,97 +68,94 @@ def report_issue():
     conn = get_db_connection()
     cur = conn.cursor()
 
-    if not force_new:
-        # Cast to geography to ensure 20 means 20 meters, not 20 degrees
-        check_query = """
-            SELECT id, category, description, status, image_url, created_at, phone_number, ward_id 
-            FROM complaints 
-            WHERE ST_DWithin(geom::geography, ST_SetSRID(ST_MakePoint(%s, %s), 4326)::geography, 20)
-            AND status != 'resolved';
-        """
-        cur.execute(check_query, (lon, lat))
-        data = cur.fetchall()
-        
-        duplicate_issue = None
-        for issue in data:
-            if issue[1] == category:
-                # Format datetime safely
-                db_date = issue[5]
-                iso_date = db_date.isoformat() + 'Z' if isinstance(db_date, datetime.datetime) else None
-                
-                duplicate_issue = {
-                    "id": str(issue[0]),
-                    "category": issue[1],
-                    "description": issue[2],
-                    "status": issue[3].lower() if issue[3] else 'pending',
-                    "image_url": issue[4],
-                    "created_at": iso_date,
-                    "phone_number": issue[6],
-                    "ward_id": issue[7],
-                    "latitude": lat,
-                    "longitude": lon
-                }
-                break
-
-        if duplicate_issue:
-            cur.close()
-            conn.close()
-            os.remove(temp_file_path)
-            # Return the duplicate data to the frontend modal
-            return jsonify({
-                "status": "Duplicate", 
-                "message": "This issue has already been reported nearby.",
-                "existing_issue": duplicate_issue
-            }), 409
-
-    # --- SPATIAL ROUTING ---
-    routing_query = """
-        SELECT id, name FROM wards 
-        WHERE ST_Contains(geom, ST_SetSRID(ST_MakePoint(%s, %s), 4326));
-    """
-    cur.execute(routing_query, (lon, lat))
-    ward = cur.fetchone()
-    ward_id = ward[0] if ward else None
-    ward_name = ward[1] if ward else "Unknown Area"
-
-    # --- UPLOAD COMPRESSED IMAGE ---
-    compression_success = compress_image(temp_file_path, quality=80)
-    file_extension = os.path.splitext(file.filename)[1]
-    unique_filename = f"{uuid.uuid4()}{file_extension}"
-
     try:
+        if not force_new:
+            # Cast to geography to ensure 20 means 20 meters, not 20 degrees
+            check_query = """
+                SELECT id, category, description, status, image_url, created_at, phone_number, ward_id 
+                FROM complaints 
+                WHERE ST_DWithin(geom::geography, ST_SetSRID(ST_MakePoint(%s, %s), 4326)::geography, 20)
+                AND status != 'resolved';
+            """
+            cur.execute(check_query, (lon, lat))
+            data = cur.fetchall()
+            
+            duplicate_issue = None
+            for issue in data:
+                if issue[1] == category:
+                    # Format datetime safely
+                    db_date = issue[5]
+                    iso_date = db_date.isoformat() + 'Z' if isinstance(db_date, datetime.datetime) else None
+                    
+                    duplicate_issue = {
+                        "id": str(issue[0]),
+                        "category": issue[1],
+                        "description": issue[2],
+                        "status": issue[3].lower() if issue[3] else 'pending',
+                        "image_url": issue[4],
+                        "created_at": iso_date,
+                        "phone_number": issue[6],
+                        "ward_id": issue[7],
+                        "latitude": lat,
+                        "longitude": lon
+                    }
+                    break
+
+            if duplicate_issue:
+                # Return the duplicate data to the frontend modal
+                return jsonify({
+                    "status": "Duplicate", 
+                    "message": "This issue has already been reported nearby.",
+                    "existing_issue": duplicate_issue
+                }), 409
+
+        # --- SPATIAL ROUTING ---
+        routing_query = """
+            SELECT id, name FROM wards 
+            WHERE ST_Contains(geom, ST_SetSRID(ST_MakePoint(%s, %s), 4326));
+        """
+        cur.execute(routing_query, (lon, lat))
+        ward = cur.fetchone()
+        ward_id = ward[0] if ward else None
+        ward_name = ward[1] if ward else "Unknown Area"
+
+        # --- UPLOAD COMPRESSED IMAGE ---
+        compression_success = compress_image(temp_file_path, quality=80)
+        file_extension = os.path.splitext(filename)[1]
+        unique_filename = f"{uuid.uuid4()}{file_extension}"
+
         with open(temp_file_path, 'rb') as f:
             supabase.storage.from_(SUPABASE_BUCKET).upload(
                 path=unique_filename, file=f, file_options={"content-type": file.mimetype}
             )
         public_url = supabase.storage.from_(SUPABASE_BUCKET).get_public_url(unique_filename)
+
+        # --- SAVE TO DATABASE ---
+        insert_query = """
+            INSERT INTO complaints (image_url, description, geom, ward_id, category, phone_number, upvotes)
+            VALUES (%s, %s, ST_SetSRID(ST_MakePoint(%s, %s), 4326), %s, %s, %s, 0)
+            RETURNING id;
+        """
+        cur.execute(insert_query, (public_url, desc, lon, lat, ward_id, category, phone))
+        new_id = cur.fetchone()[0]
+        conn.commit()
+        
+        return jsonify({
+            "status": "Success", 
+            "complaint_id": new_id,
+            "routed_to_ward": ward_name,
+            "image_url": public_url
+        }), 201
+
     except Exception as e:
+        conn.rollback()
+        return jsonify({"error": f"Failed to process request: {str(e)}"}), 500
+
+    finally:
         cur.close()
         conn.close()
-        os.remove(temp_file_path)
-        return jsonify({"error": f"Failed to upload: {str(e)}"}), 500
-
-    os.remove(temp_file_path)
-
-    # --- SAVE TO DATABASE ---
-    insert_query = """
-        INSERT INTO complaints (image_url, description, geom, ward_id, category, phone_number, upvotes)
-        VALUES (%s, %s, ST_SetSRID(ST_MakePoint(%s, %s), 4326), %s, %s, %s, 0)
-        RETURNING id;
-    """
-    cur.execute(insert_query, (public_url, desc, lon, lat, ward_id, category, phone))
-    new_id = cur.fetchone()[0]
-    conn.commit()
-    
-    cur.close()
-    conn.close()
-
-    return jsonify({
-        "status": "Success", 
-        "complaint_id": new_id,
-        "routed_to_ward": ward_name,
-        "image_url": public_url
-    }), 201
+        if os.path.exists(temp_file_path):
+            os.remove(temp_file_path)
 
 # 3. Issue Request End point
 @app.route('/api/v1/complaints/user/<string:phone_number>', methods=['GET'])

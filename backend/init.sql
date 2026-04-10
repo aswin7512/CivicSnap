@@ -17,7 +17,7 @@ CREATE TABLE complaints (
     status VARCHAR(20) DEFAULT 'Pending',
     geom GEOMETRY(Point, 4326),
     ward_id INTEGER REFERENCES wards(id),
-    phone VARCHAR(200),
+    phone_number VARCHAR(200),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     upvotes INTEGER DEFAULT 0
 );

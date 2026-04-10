@@ -312,25 +312,31 @@ def get_all_complaints():
     cur = conn.cursor()
     
     try:
-        profile_query = "SELECT role, ward_allocated FROM public.profiles WHERE id = %s;"
+        profile_query = """
+            SELECT p.role, array_remove(array_agg(aw.ward_id), NULL) 
+            FROM public.profiles p
+            LEFT JOIN public.admin_wards aw ON p.id = aw.user_id
+            WHERE p.id = %s
+            GROUP BY p.id;
+        """
         cur.execute(profile_query, (admin_id,))
         profile = cur.fetchone()
 
         if not profile or profile[0] != 'admin':
             return jsonify({"error": "Unauthorized: Admin access required"}), 403
             
-        ward_allocated = profile[1]
+        wards_allocated = profile[1]
 
         # --- ADDED COALESCE(upvotes, 0) TO BOTH QUERIES ---
-        if ward_allocated is not None:
+        if wards_allocated:
             query = """
                 SELECT id, category, description, status, image_url, created_at, 
                        phone_number, ward_id, ST_Y(geom) as lat, ST_X(geom) as lon, COALESCE(upvotes, 0) as upvotes
                 FROM complaints 
-                WHERE ward_id = %s
+                WHERE ward_id = ANY(%s::int[])
                 ORDER BY created_at DESC;
             """
-            cur.execute(query, (ward_allocated,))
+            cur.execute(query, (wards_allocated,))
         else:
             query = """
                 SELECT id, category, description, status, image_url, created_at, 
@@ -363,7 +369,7 @@ def get_all_complaints():
 
         return jsonify({
             "status": "Success", 
-            "ward_allocated": ward_allocated,
+            "wards_allocated": wards_allocated,
             "count": len(complaints),
             "data": complaints
         }), 200
@@ -407,14 +413,160 @@ def get_wards():
     conn = get_db_connection()
     cur = conn.cursor()
     try:
-        # Fetch ward IDs and names, sorted alphabetically
-        cur.execute("SELECT id, name FROM wards ORDER BY name ASC;")
+        # Fetch ward IDs, names, and geometry GeoJSON
+        cur.execute("SELECT id, name, ST_AsGeoJSON(geom) FROM wards ORDER BY name ASC;")
         records = cur.fetchall()
         
-        wards = [{"id": row[0], "name": row[1]} for row in records]
+        import json
+        wards = []
+        for row in records:
+            wards.append({
+                "id": row[0], 
+                "name": row[1],
+                "geom": json.loads(row[2]) if row[2] else None
+            })
         
         return jsonify({"status": "Success", "data": wards}), 200
     except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    finally:
+        cur.close()
+        conn.close()
+
+# 9. ADMIN: Set new ward boundary
+@app.route('/api/v1/wards', methods=['POST'])
+def create_ward():
+    data = request.json
+    name = data.get('name')
+    geom_wkt = data.get('geom_wkt')
+    
+    if not name or not geom_wkt:
+        return jsonify({"error": "Missing name or geom_wkt"}), 400
+
+    conn = get_db_connection()
+    cur = conn.cursor()
+    try:
+        # Check for intersection overlaps using ST_Area of ST_Intersection > 0
+        # This allows boundaries to seamlessly touch without throwing overlap errors
+        overlap_query = """
+            SELECT name FROM wards 
+            WHERE ST_Area(ST_Intersection(geom, ST_GeomFromText(%s, 4326))) > 0;
+        """
+        cur.execute(overlap_query, (geom_wkt,))
+        overlaps = cur.fetchall()
+        
+        if overlaps:
+            conflicting_wards = [row[0] for row in overlaps]
+            return jsonify({
+                "status": "Conflict", 
+                "error": "The drawn boundary overlaps with existing wards.",
+                "conflicts": conflicting_wards
+            }), 409
+
+        insert_query = "INSERT INTO wards (name, geom) VALUES (%s, ST_GeomFromText(%s, 4326)) RETURNING id;"
+        cur.execute(insert_query, (name, geom_wkt))
+        new_id = cur.fetchone()[0]
+        conn.commit()
+        return jsonify({"status": "Success", "ward_id": new_id}), 201
+    except Exception as e:
+        conn.rollback()
+        return jsonify({"error": str(e)}), 500
+    finally:
+        cur.close()
+        conn.close()
+
+# 10. ADMIN: Get users for admin assignment
+@app.route('/api/v1/admin/users', methods=['GET'])
+def get_users():
+    conn = get_db_connection()
+    cur = conn.cursor()
+    try:
+        query = """
+            SELECT au.id, au.phone, p.role, array_remove(array_agg(aw.ward_id), NULL) 
+            FROM auth.users au
+            LEFT JOIN public.profiles p ON au.id = p.id
+            LEFT JOIN public.admin_wards aw ON p.id = aw.user_id
+            GROUP BY au.id, p.role;
+        """
+        cur.execute(query)
+        records = cur.fetchall()
+        
+        users = []
+        for row in records:
+            users.append({
+                "id": str(row[0]),
+                "phone": row[1] if row[1] else "Unknown Phone",
+                "role": row[2] if row[2] else "citizen",
+                "wards_allocated": row[3] if row[3] else []
+            })
+            
+        return jsonify({"status": "Success", "data": users}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    finally:
+        cur.close()
+        conn.close()
+
+# 11. ADMIN: Assign users to ward as admin
+@app.route('/api/v1/wards/<int:ward_id>/admin', methods=['POST'])
+def assign_ward_admin(ward_id):
+    data = request.json
+    user_ids = data.get('user_ids', [])
+
+    conn = get_db_connection()
+    cur = conn.cursor()
+    try:
+        # Check if ward exists
+        cur.execute("SELECT id FROM wards WHERE id = %s", (ward_id,))
+        if not cur.fetchone():
+            return jsonify({"error": "Ward not found"}), 404
+            
+        # 1. Clear existing junction mappings for this specific ward mapped in the panel
+        cur.execute("DELETE FROM public.admin_wards WHERE ward_id = %s", (ward_id,))
+
+        # 2. Rebuild the assignments directly according to the frontend's explicit checklist
+        if user_ids:
+            for uid in user_ids:
+                cur.execute("INSERT INTO public.admin_wards (user_id, ward_id) VALUES (%s, %s)", (uid, ward_id))
+
+        # 3. Synchronize `role` profiles automatically globally against the new mappings!
+        cur.execute("""
+            UPDATE public.profiles SET role = 'citizen' 
+            WHERE role = 'admin' AND id NOT IN (SELECT user_id FROM public.admin_wards);
+        """)
+        cur.execute("""
+            UPDATE public.profiles SET role = 'admin' 
+            WHERE id IN (SELECT user_id FROM public.admin_wards);
+        """)
+        
+        conn.commit()
+        return jsonify({"status": "Success", "message": "Admins bulk assigned successfully"}), 200
+    except Exception as e:
+        conn.rollback()
+        return jsonify({"error": str(e)}), 500
+    finally:
+        cur.close()
+        conn.close()
+
+# 12. ADMIN: Delete a ward
+@app.route('/api/v1/wards/<int:ward_id>', methods=['DELETE'])
+def delete_ward(ward_id):
+    conn = get_db_connection()
+    cur = conn.cursor()
+    try:
+        # Cascading relationships in Postgres takes care of the mapping table.
+        # But we must nullify any historic complaints linked to this now-vanished ward
+        cur.execute("UPDATE complaints SET ward_id = NULL WHERE ward_id = %s", (ward_id,))
+        
+        # Finally delete the ward
+        cur.execute("DELETE FROM wards WHERE id = %s RETURNING id", (ward_id,))
+        if not cur.fetchone():
+            return jsonify({"error": "Ward not found"}), 404
+            
+        conn.commit()
+        return jsonify({"status": "Success", "message": "Ward deleted successfully"}), 200
+    except Exception as e:
+        conn.rollback()
         return jsonify({"error": str(e)}), 500
     finally:
         cur.close()

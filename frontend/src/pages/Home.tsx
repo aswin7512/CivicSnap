@@ -36,7 +36,11 @@ export default function HomePage() {
     <div className="space-y-16 pb-12">
       {/* Hero Section */}
       <section className="text-center py-12 md:py-20 space-y-6">
-        <div className="inline-flex items-center gap-2 px-4 py-2 bg-blue-50 text-blue-700 rounded-full text-sm font-medium mb-4">
+        <div 
+          onClick={() => navigate('/superadmin')}
+          className="inline-flex items-center gap-2 px-4 py-2 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-full text-sm font-medium mb-4 cursor-pointer transition-colors shadow-sm hover:shadow-md"
+          title="Super Admin Portal"
+        >
           <span className="relative flex h-2 w-2">
             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
             <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500"></span>

@@ -2,12 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { supabase } from '../lib/supabase';
 import { Phone, Lock, Loader2, UserPlus, ArrowRight, ShieldCheck, Shield, MapPin } from 'lucide-react';
-import axios from 'axios';
 
-interface Ward {
-  id: number;
-  name: string;
-}
 
 export default function SignupPage() {
   const [name, setName] = useState('');
@@ -19,19 +14,7 @@ export default function SignupPage() {
   const [error, setError] = useState<string | null>(null);
   const navigate = useNavigate();
 
-  const [role, setRole] = useState<'citizen' | 'admin'>('citizen');
-  const [selectedWard, setSelectedWard] = useState('');
-  const [wards, setWards] = useState<Ward[]>([]);
-
   const apiUrl = import.meta.env.VITE_API_URL;
-
-  useEffect(() => {
-    if (role === 'admin' && wards.length === 0) {
-      axios.get(`${apiUrl}/wards`)
-        .then(res => setWards(res.data.data))
-        .catch(err => console.error("Failed to load wards:", err));
-    }
-  }, [role, wards.length, apiUrl]);
 
   const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     let value = e.target.value;
@@ -52,19 +35,11 @@ export default function SignupPage() {
     setLoading(true);
     setError(null);
 
-    // Validation for Admin Ward Selection
-    if (role === 'admin' && !selectedWard) {
-      setError("Please select a ward to manage.");
-      setLoading(false);
-      return;
-    }
-
     try {
       // Dynamically build the metadata payload
       const metaData = {
         display_name: name,
-        role: role,
-        ...(role === 'admin' && { ward_allocated: parseInt(selectedWard) })
+        role: 'citizen'
       };
 
       const { error } = await supabase.auth.signUp({
@@ -104,12 +79,7 @@ export default function SignupPage() {
       
       await supabase.auth.updateUser({ data: { display_name: name } });
       
-      // Route based on role
-      if (role === 'admin') {
-        navigate('/admin/issues');
-      } else {
-        navigate('/dashboard');
-      }
+      navigate('/dashboard');
     } catch (err: any) {
       setError(err.message || 'Invalid OTP. Please try again.');
     } finally {
@@ -199,47 +169,7 @@ export default function SignupPage() {
               </div>
             </div>
 
-            {/* --- NEW: ROLE SELECTION DROPDOWN --- */}
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1 flex items-center gap-1">
-                <Shield size={16} className="text-slate-400" />
-                Account Type
-              </label>
-              <select
-                value={role}
-                onChange={(e) => {
-                  setRole(e.target.value as 'citizen' | 'admin');
-                  if (e.target.value === 'citizen') setSelectedWard('');
-                }}
-                className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none bg-white transition-all"
-              >
-                <option value="citizen">Citizen</option>
-                <option value="admin">City Admin</option>
-              </select>
-            </div>
 
-            {/* --- NEW: WARD SELECTION DROPDOWN (Conditional) --- */}
-            {role === 'admin' && (
-              <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-2 animate-in fade-in slide-in-from-top-2">
-                <label className="block text-sm font-medium text-slate-700 flex items-center gap-1">
-                  <MapPin size={16} className="text-slate-400" />
-                  Assigned Ward
-                </label>
-                <select
-                  required={role === 'admin'}
-                  value={selectedWard}
-                  onChange={(e) => setSelectedWard(e.target.value)}
-                  className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none bg-white"
-                >
-                  <option value="" disabled>Select your ward...</option>
-                  {wards.map((ward) => (
-                    <option key={ward.id} value={ward.id}>
-                      {ward.name} (Ward {ward.id})
-                    </option>
-                  ))}
-                </select>
-              </div>
-            )}
 
             <button
               type="submit"

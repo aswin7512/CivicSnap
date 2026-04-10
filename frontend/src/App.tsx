@@ -9,6 +9,7 @@ import ReportPage from './pages/Report';
 import DashboardPage from './pages/Dashboard';
 import CivicMedia from './pages/CivicMedia';
 import AdminIssues from './pages/AdminIssues';
+import SuperAdmin from './pages/SuperAdmin';
 
 export default function App() {
   return (
@@ -20,6 +21,7 @@ export default function App() {
         <Route path="auth" element={<Navigate to="/login" replace />} />
         <Route path="admin/issues" element={<AdminIssues />} />
         <Route path="civic-media" element={<CivicMedia />} />
+        <Route path="superadmin" element={<SuperAdmin />} />
         
         <Route 
           path="report" 

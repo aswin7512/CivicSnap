@@ -5,6 +5,7 @@ import { supabase } from '../lib/supabase';
 interface AuthContextType {
   session: Session | null;
   user: User | null;
+  userRole: 'admin' | 'citizen' | null;
   loading: boolean;
   signOut: () => Promise<void>;
 }
@@ -14,7 +15,24 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [user, setUser] = useState<User | null>(null);
+  const [userRole, setUserRole] = useState<'admin' | 'citizen' | null>(null);
   const [loading, setLoading] = useState(true);
+
+  const fetchRole = async (userId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', userId)
+        .single();
+      
+      if (data && !error) {
+        setUserRole(data.role as 'admin'|'citizen');
+      }
+    } catch (err) {
+      console.error('Failed to fetch profile role', err);
+    }
+  };
 
   useEffect(() => {
     // Check active sessions and subscribe to auth changes
@@ -23,6 +41,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const { data: { session } } = await supabase.auth.getSession();
         setSession(session);
         setUser(session?.user ?? null);
+        if (session?.user) {
+          await fetchRole(session.user.id);
+        }
       } catch (error) {
         console.error('Supabase auth initialization failed:', error);
       } finally {
@@ -34,9 +55,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
+    } = supabase.auth.onAuthStateChange(async (_event, session) => {
       setSession(session);
       setUser(session?.user ?? null);
+      if (session?.user) {
+         await fetchRole(session.user.id);
+      } else {
+         setUserRole(null);
+      }
       setLoading(false);
     });
 
@@ -48,7 +74,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ session, user, loading, signOut }}>
+    <AuthContext.Provider value={{ session, user, userRole, loading, signOut }}>
       {children}
     </AuthContext.Provider>
   );

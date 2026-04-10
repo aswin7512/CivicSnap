@@ -43,6 +43,8 @@ CREATE TABLE public.profiles (
     id UUID REFERENCES auth.users(id) ON DELETE CASCADE PRIMARY KEY,
     role VARCHAR(20) DEFAULT 'citizen' CHECK (role IN ('admin', 'citizen'))
 );
+ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Users can read own profile" ON public.profiles FOR SELECT USING ( auth.uid() = id );
 
 -- 7. Create admin_wards junction table
 CREATE TABLE public.admin_wards (

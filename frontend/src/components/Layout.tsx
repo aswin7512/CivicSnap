@@ -5,9 +5,10 @@ import { useAuth } from '../context/AuthContext';
 
 export function Layout() {
   const location = useLocation();
-  const { user, signOut } = useAuth();
+  const { user, userRole, signOut } = useAuth();
 
-  const isAdmin = user?.user_metadata?.role === 'admin';
+  // Favor the true database role over stale JWT metadata
+  const isAdmin = userRole === 'admin' || user?.user_metadata?.role === 'admin';
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col font-sans">
